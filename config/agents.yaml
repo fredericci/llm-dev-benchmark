@@ -1,0 +1,33 @@
+# config/agents.yaml
+# CLI agents for Mode B (CLI Agent execution)
+# Prices here are used ONLY to estimate cost when the agent does not return usage metadata.
+# Add a new agent by appending an entry here + creating src/cli-agents/<id>.agent.ts
+
+agents:
+  - id: claude-code
+    displayName: "Claude Code (CLI)"
+    binary: claude
+    provider: cli-anthropic
+    # Reference pricing for cost estimation (Sonnet as base)
+    estimatedPricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+    checkCommand: "claude --version"
+
+  - id: gemini-cli
+    displayName: "Gemini CLI"
+    binary: gemini
+    provider: cli-google
+    estimatedPricing:
+      inputPerMToken: 1.25
+      outputPerMToken: 5.00
+    checkCommand: "gemini --version"
+
+  - id: codex-cli
+    displayName: "Codex CLI (OpenAI)"
+    binary: codex
+    provider: cli-openai
+    estimatedPricing:
+      inputPerMToken: 2.50
+      outputPerMToken: 10.00
+    checkCommand: "codex --version"

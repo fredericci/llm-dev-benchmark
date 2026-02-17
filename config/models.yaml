@@ -1,0 +1,68 @@
+# config/models.yaml
+# API models for Mode A (API Direct execution)
+# Add a new model by appending an entry here — no other file changes needed.
+
+models:
+  - id: claude-haiku-3-5
+    provider: anthropic
+    displayName: "Claude 3.5 Haiku"
+    modelId: "claude-haiku-4-5-20251001"
+    pricing:
+      inputPerMToken: 0.80
+      outputPerMToken: 4.00
+
+  - id: claude-sonnet-4
+    provider: anthropic
+    displayName: "Claude Sonnet 4"
+    modelId: "claude-sonnet-4-20250514"
+    pricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+
+  - id: claude-opus-4
+    provider: anthropic
+    displayName: "Claude Opus 4"
+    modelId: "claude-opus-4-20250514"
+    pricing:
+      inputPerMToken: 15.00
+      outputPerMToken: 75.00
+
+  - id: gpt-4o-mini
+    provider: openai
+    displayName: "GPT-4o Mini"
+    modelId: "gpt-4o-mini"
+    pricing:
+      inputPerMToken: 0.15
+      outputPerMToken: 0.60
+
+  - id: gpt-4o
+    provider: openai
+    displayName: "GPT-4o"
+    modelId: "gpt-4o"
+    pricing:
+      inputPerMToken: 2.50
+      outputPerMToken: 10.00
+
+  - id: o3-mini
+    provider: openai
+    displayName: "o3-mini"
+    modelId: "o3-mini"
+    pricing:
+      inputPerMToken: 1.10
+      outputPerMToken: 4.40
+
+  - id: gemini-flash-2
+    provider: google
+    displayName: "Gemini 2.0 Flash"
+    modelId: "gemini-2.0-flash"
+    pricing:
+      inputPerMToken: 0.10
+      outputPerMToken: 0.40
+
+  - id: gemini-pro-1-5
+    provider: google
+    displayName: "Gemini 1.5 Pro"
+    modelId: "gemini-1.5-pro"
+    pricing:
+      inputPerMToken: 1.25
+      outputPerMToken: 5.00

@@ -1,0 +1,32 @@
+{
+  "name": "llm-dev-bench",
+  "version": "1.0.0",
+  "description": "Benchmark that measures cost-efficiency of LLMs on real software development tasks",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "ts-node -r tsconfig-paths/register src/cli.ts",
+    "bench": "ts-node -r tsconfig-paths/register src/cli.ts run",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "bin": {
+    "llm-dev-bench": "dist/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@google/generative-ai": "^0.21.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.77.0",
+    "p-limit": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.2"
+  }
+}

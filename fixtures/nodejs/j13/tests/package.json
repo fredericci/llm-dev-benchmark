@@ -1,0 +1,14 @@
+{
+  "name": "j13-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "jest --forceExit"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 10000
+  }
+}
