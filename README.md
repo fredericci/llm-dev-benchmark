@@ -19,6 +19,10 @@ Both modes use **the exact same prompt** per job. Zero transformation between mo
 git clone <repo>
 cd llm-dev-benchmark
 npm install
+
+# Install Jest and test deps for all fixture test directories
+# Required before running any test-execution jobs
+npm run setup
 ```
 
 ---

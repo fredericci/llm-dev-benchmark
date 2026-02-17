@@ -1,6 +1,10 @@
 # Benchmark results (generated output — never commit)
 results/
 
+# Fixture test environments (run scripts/setup-fixtures.sh to generate)
+fixtures/**/node_modules/
+fixtures/**/package-lock.json
+
 # Logs
 logs
 *.log

@@ -8,6 +8,7 @@
     "start": "node dist/cli.js",
     "dev": "ts-node -r tsconfig-paths/register src/cli.ts",
     "bench": "ts-node -r tsconfig-paths/register src/cli.ts run",
+    "setup": "bash scripts/setup-fixtures.sh",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
