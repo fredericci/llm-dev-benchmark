@@ -1,3 +1,6 @@
+# Benchmark results (generated output — never commit)
+results/
+
 # Logs
 logs
 *.log
