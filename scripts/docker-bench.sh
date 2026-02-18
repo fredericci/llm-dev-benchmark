@@ -203,6 +203,7 @@ launch_container() {
     --jobs "$job" \
     --runs "$RUNS" \
     --languages "$LANGUAGES" \
+    --concurrent 1 \
     --output /app/results \
     > "${combo_dir}/container.log" 2>&1
 
@@ -223,8 +224,14 @@ wait_one() {
     log "[DONE   ] $name"
     SUCCEEDED=$((SUCCEEDED + 1))
   else
-    log "[FAILED ] $name (see ${combo_dir}/container.log)"
+    log "[FAILED ] $name"
     FAILED=$((FAILED + 1))
+    # Print last 10 lines of the container log to aid debugging
+    if [ -f "${combo_dir}/container.log" ]; then
+      echo "    ── container log (last 10 lines) ──────────────────────"
+      tail -n 10 "${combo_dir}/container.log" | sed 's/^/    /'
+      echo "    ── full log: ${combo_dir}/container.log"
+    fi
   fi
 
   # Remove first element from arrays
@@ -274,6 +281,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log "Merging CSV results..."
 bash "${SCRIPT_DIR}/merge-results.sh" "$RUN_DIR" "$MERGED_FILE"
+
+# Print consolidated summary table by running summarize inside the image
+echo ""
+log "Generating summary..."
+docker run --rm \
+  -v "$(realpath "$MERGED_FILE"):/app/results/benchmark_merged.csv" \
+  "$IMAGE" \
+  summarize /app/results/benchmark_merged.csv
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
