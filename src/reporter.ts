@@ -8,6 +8,7 @@ const CSV_HEADER = [
   'input_tokens', 'output_tokens', 'total_tokens', 'tokens_source', 'cost_usd',
   'latency_ms', 'turns', 'passed', 'quality_score', 'quality_notes',
   'error_message', 'raw_prompt_chars', 'raw_response_chars',
+  'iteration_scores', 'passed_on_turn',
 ].join(',');
 
 function escapeCsv(value: string | number | boolean | undefined): string {
@@ -43,6 +44,8 @@ function resultToRow(r: JobResult): string {
     escapeCsv(r.errorMessage ?? ''),
     r.rawPrompt.length,
     r.rawResponse.length,
+    escapeCsv(r.iterationScores),
+    r.passedOnTurn,
   ].join(',');
 }
 
@@ -88,8 +91,9 @@ export class Reporter {
     const cost = result.tokensSource === 'estimated'
       ? `~$${result.costUSD.toFixed(4)}`
       : `$${result.costUSD.toFixed(4)}`;
+    const turnStr = result.turns > 1 ? ` | turn ${result.passedOnTurn > 0 ? result.passedOnTurn : 'X'}/${result.turns}` : '';
     console.log(
-      `  [${status}] ${result.jobId} | ${result.modelDisplayName} | ${result.language} | run ${result.runNumber} | ${result.latencyMs}ms | ${cost}${pct}`
+      `  [${status}] ${result.jobId} | ${result.modelDisplayName} | ${result.language} | run ${result.runNumber} | ${result.latencyMs}ms | ${cost}${turnStr}${pct}`
     );
   }
 

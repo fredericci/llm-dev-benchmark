@@ -6,8 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js",
-    "dev": "ts-node -r tsconfig-paths/register src/cli.ts",
-    "bench": "ts-node -r tsconfig-paths/register src/cli.ts run",
+    "bench": "node dist/cli.js run",
+    "dev": "ts-node src/cli.ts",
     "setup": "bash scripts/setup-fixtures.sh",
     "docker:build": "docker build -t llm-dev-bench .",
     "docker:bench": "bash scripts/docker-bench.sh",
@@ -19,17 +19,22 @@
     "llm-dev-bench": "dist/cli.js"
   },
   "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.4.0",
     "@anthropic-ai/sdk": "^0.36.0",
     "@google/generative-ai": "^0.21.0",
+    "chart.js": "^4.5.1",
+    "chartjs-node-canvas": "^5.0.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "js-yaml": "^4.1.0",
     "openai": "^4.77.0",
-    "p-limit": "^3.1.0"
+    "p-limit": "^3.1.0",
+    "pdfkit": "^0.17.2"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "@types/pdfkit": "^0.17.5",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
   }

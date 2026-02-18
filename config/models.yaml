@@ -1,11 +1,43 @@
 # config/models.yaml
 # API models for Mode A (API Direct execution)
 # Add a new model by appending an entry here — no other file changes needed.
+#
+# Providers (model owner):
+#   anthropic — Anthropic Claude models
+#   openai    — OpenAI API (requires OPENAI_API_KEY)
+#   google    — Google Generative AI (requires GOOGLE_API_KEY)
+#
+# Anthropic connection backend is configured via ANTHROPIC_BACKEND env var:
+#   api    — Anthropic API direct (requires ANTHROPIC_API_KEY)
+#   vertex — Google Vertex AI (uses ADC from: gcloud auth application-default login)
+#
+# Model IDs validated against live APIs on 2026-02-18.
 
 models:
+
+  # ── Anthropic — Claude 3.x ────────────────────────────────────────────────
+
   - id: claude-haiku-3-5
     provider: anthropic
     displayName: "Claude 3.5 Haiku"
+    modelId: "claude-3-5-haiku-20241022"
+    pricing:
+      inputPerMToken: 0.80
+      outputPerMToken: 4.00
+
+  - id: claude-sonnet-3-7
+    provider: anthropic
+    displayName: "Claude 3.7 Sonnet"
+    modelId: "claude-3-7-sonnet-20250219"
+    pricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+
+  # ── Anthropic — Claude 4.x ────────────────────────────────────────────────
+
+  - id: claude-haiku-4-5
+    provider: anthropic
+    displayName: "Claude Haiku 4.5"
     modelId: "claude-haiku-4-5-20251001"
     pricing:
       inputPerMToken: 0.80
@@ -19,6 +51,22 @@ models:
       inputPerMToken: 3.00
       outputPerMToken: 15.00
 
+  - id: claude-sonnet-4-5
+    provider: anthropic
+    displayName: "Claude Sonnet 4.5"
+    modelId: "claude-sonnet-4-5-20250929"
+    pricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+
+  - id: claude-sonnet-4-6
+    provider: anthropic
+    displayName: "Claude Sonnet 4.6"
+    modelId: "claude-sonnet-4-6"
+    pricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+
   - id: claude-opus-4
     provider: anthropic
     displayName: "Claude Opus 4"
@@ -26,6 +74,24 @@ models:
     pricing:
       inputPerMToken: 15.00
       outputPerMToken: 75.00
+
+  - id: claude-opus-4-5
+    provider: anthropic
+    displayName: "Claude Opus 4.5"
+    modelId: "claude-opus-4-5-20251101"
+    pricing:
+      inputPerMToken: 15.00
+      outputPerMToken: 75.00
+
+  - id: claude-opus-4-6
+    provider: anthropic
+    displayName: "Claude Opus 4.6"
+    modelId: "claude-opus-4-6"
+    pricing:
+      inputPerMToken: 15.00
+      outputPerMToken: 75.00
+
+  # ── OpenAI — GPT-4o ───────────────────────────────────────────────────────
 
   - id: gpt-4o-mini
     provider: openai
@@ -43,6 +109,82 @@ models:
       inputPerMToken: 2.50
       outputPerMToken: 10.00
 
+  # ── OpenAI — GPT-4.1 ──────────────────────────────────────────────────────
+
+  - id: gpt-4-1-nano
+    provider: openai
+    displayName: "GPT-4.1 Nano"
+    modelId: "gpt-4.1-nano"
+    pricing:
+      inputPerMToken: 0.10
+      outputPerMToken: 0.40
+
+  - id: gpt-4-1-mini
+    provider: openai
+    displayName: "GPT-4.1 Mini"
+    modelId: "gpt-4.1-mini"
+    pricing:
+      inputPerMToken: 0.40
+      outputPerMToken: 1.60
+
+  - id: gpt-4-1
+    provider: openai
+    displayName: "GPT-4.1"
+    modelId: "gpt-4.1"
+    pricing:
+      inputPerMToken: 2.00
+      outputPerMToken: 8.00
+
+  # ── OpenAI — GPT-5 ───────────────────────────────────────────────────────
+  # These models require max_completion_tokens; the adapter handles this automatically.
+
+  - id: gpt-5
+    provider: openai
+    displayName: "GPT-5"
+    modelId: "gpt-5"
+    pricing:
+      inputPerMToken: 2.00
+      outputPerMToken: 10.00
+
+  - id: gpt-5-1
+    provider: openai
+    displayName: "GPT-5.1"
+    modelId: "gpt-5.1"
+    pricing:
+      inputPerMToken: 2.50
+      outputPerMToken: 12.50
+
+  - id: gpt-5-2
+    provider: openai
+    displayName: "GPT-5.2"
+    modelId: "gpt-5.2"
+    pricing:
+      inputPerMToken: 1.75
+      outputPerMToken: 14.00
+
+  # ── OpenAI — Codex (Responses API) ───────────────────────────────────────
+  # These models only work via v1/responses, not v1/chat/completions.
+  # Uses provider: openai-responses
+
+  - id: gpt-5-codex
+    provider: openai-responses
+    displayName: "GPT-5 Codex"
+    modelId: "gpt-5-codex"
+    pricing:
+      inputPerMToken: 3.00
+      outputPerMToken: 15.00
+
+  - id: gpt-5-2-codex
+    provider: openai-responses
+    displayName: "GPT-5.2 Codex"
+    modelId: "gpt-5.2-codex"
+    pricing:
+      inputPerMToken: 1.75
+      outputPerMToken: 14.00
+
+  # ── OpenAI — Reasoning ────────────────────────────────────────────────────
+  # These models do not support temperature; the adapter handles this automatically.
+
   - id: o3-mini
     provider: openai
     displayName: "o3-mini"
@@ -51,18 +193,62 @@ models:
       inputPerMToken: 1.10
       outputPerMToken: 4.40
 
-  - id: gemini-flash-2
+  - id: o4-mini
+    provider: openai
+    displayName: "o4-mini"
+    modelId: "o4-mini"
+    pricing:
+      inputPerMToken: 1.10
+      outputPerMToken: 4.40
+
+  - id: o3
+    provider: openai
+    displayName: "o3"
+    modelId: "o3"
+    pricing:
+      inputPerMToken: 10.00
+      outputPerMToken: 40.00
+
+  # ── Google — Gemini 2.5 ───────────────────────────────────────────────────
+
+  - id: gemini-flash-lite-2-5
     provider: google
-    displayName: "Gemini 2.0 Flash"
-    modelId: "gemini-2.0-flash"
+    displayName: "Gemini 2.5 Flash Lite"
+    modelId: "gemini-2.5-flash-lite"
     pricing:
       inputPerMToken: 0.10
       outputPerMToken: 0.40
 
-  - id: gemini-pro-1-5
+  - id: gemini-flash-2-5
     provider: google
-    displayName: "Gemini 1.5 Pro"
-    modelId: "gemini-1.5-pro"
+    displayName: "Gemini 2.5 Flash"
+    modelId: "gemini-2.5-flash"
+    pricing:
+      inputPerMToken: 0.30
+      outputPerMToken: 2.50
+
+  - id: gemini-pro-2-5
+    provider: google
+    displayName: "Gemini 2.5 Pro"
+    modelId: "gemini-2.5-pro"
     pricing:
       inputPerMToken: 1.25
-      outputPerMToken: 5.00
+      outputPerMToken: 10.00
+
+  # ── Google — Gemini 3 (preview) ───────────────────────────────────────────
+
+  - id: gemini-flash-3-preview
+    provider: google
+    displayName: "Gemini 3 Flash (Preview)"
+    modelId: "gemini-3-flash-preview"
+    pricing:
+      inputPerMToken: 0.00
+      outputPerMToken: 0.00
+
+  - id: gemini-pro-3-preview
+    provider: google
+    displayName: "Gemini 3 Pro (Preview)"
+    modelId: "gemini-3-pro-preview"
+    pricing:
+      inputPerMToken: 0.00
+      outputPerMToken: 0.00

@@ -25,12 +25,18 @@ import j17 from './j17-db-migration';
 import j18 from './j18-performance-diagnosis';
 import j19 from './j19-seed-data';
 import j20 from './j20-ci-failure';
+import j21 from './j21-accessible-dropdown';
+import j22 from './j22-debounce-search';
+import j23 from './j23-multistep-form';
+import j24 from './j24-optimistic-update';
+import j25 from './j25-async-state';
 
 const ALL_JOBS: Job[] = [
   j01, j02, j03, j04, j05,
   j06, j07, j08, j09, j10,
   j11, j12, j13, j14, j15,
   j16, j17, j18, j19, j20,
+  j21, j22, j23, j24, j25,
 ];
 
 const JOB_MAP = new Map<string, Job>(ALL_JOBS.map((j) => [j.id, j]));

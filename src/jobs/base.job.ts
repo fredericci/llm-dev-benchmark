@@ -46,6 +46,10 @@ export interface JobResult {
   // Audit trail
   rawPrompt: string;            // Exact prompt sent
   rawResponse: string;          // Full response received
+
+  // Iteration metrics
+  iterationScores: string;      // Comma-separated scores per turn, e.g. "2.5,4.0,5.0"
+  passedOnTurn: number;         // 1-based turn where it first passed; 0 if never passed
 }
 
 /**
