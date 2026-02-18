@@ -9,6 +9,9 @@
     "bench": "node dist/cli.js run",
     "dev": "ts-node src/cli.ts",
     "setup": "bash scripts/setup-fixtures.sh",
+    "docker:build": "docker build -t llm-dev-bench .",
+    "docker:bench": "bash scripts/docker-bench.sh",
+    "docker:merge": "bash scripts/merge-results.sh",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
