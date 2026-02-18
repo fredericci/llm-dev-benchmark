@@ -33,16 +33,17 @@ ${input.fixtureCode}`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
     // Extract the FIXED CODE section
     const fixedCodeMatch = response.match(/FIXED CODE:\s*\n([\s\S]+?)(?:\n\n[A-Z]|$)/);
     const fixedCode = fixedCodeMatch ? fixedCodeMatch[1].trim() : response;
 
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j03', 'tests');
-    const result = await runTests(fixedCode, input.language, testDir, 'counter.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'counter.js',
+      java: 'Counter.java',
+      dotnet: 'Counter.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j03', 'tests');
+    const result = await runTests(fixedCode, input.language, testDir, implFileMap[input.language]);
 
     const hasLocation = /LOCATION:/i.test(response);
     const hasExplanation = /EXPLANATION:/i.test(response);

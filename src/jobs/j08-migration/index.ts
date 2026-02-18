@@ -65,12 +65,13 @@ ${input.fixtureCode}`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j08', 'tests');
-    const result = await runTests(response, input.language, testDir, 'http-client.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'http-client.js',
+      java: 'HttpClient.java',
+      dotnet: 'HttpClient.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j08', 'tests');
+    const result = await runTests(response, input.language, testDir, implFileMap[input.language]);
 
     return {
       passed: result.passed,

@@ -34,12 +34,13 @@ ${input.fixtureCode}`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j02', 'tests');
-    const result = await runTests(response, input.language, testDir, 'order-processor.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'order-processor.js',
+      java: 'OrderProcessor.java',
+      dotnet: 'OrderProcessor.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j02', 'tests');
+    const result = await runTests(response, input.language, testDir, implFileMap[input.language]);
 
     return {
       passed: result.passed,
