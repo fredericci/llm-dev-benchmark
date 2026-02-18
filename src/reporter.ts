@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { JobResult } from './jobs/base.job';
+import { JobResult, Language } from './jobs/base.job';
 
 const CSV_HEADER = [
   'timestamp', 'job_id', 'job_name', 'language', 'execution_mode',
@@ -100,26 +100,9 @@ export class Reporter {
     const durationMs = Date.now() - this.startTime;
     const durationStr = formatDuration(durationMs);
 
-    // Group results by model/agent
-    const groups = new Map<string, SummaryEntry>();
-    for (const r of allResults) {
-      const key = `${r.modelId}::${r.executionMode}`;
-      if (!groups.has(key)) {
-        groups.set(key, {
-          displayName: r.modelDisplayName,
-          mode: r.executionMode,
-          provider: r.provider,
-          results: [],
-        });
-      }
-      groups.get(key)!.results.push(r);
-    }
+    printSummaryTable(allResults);
 
-    const entries = Array.from(groups.values()).sort((a, b) => {
-      const aPass = a.results.filter((r) => r.passed).length / a.results.length;
-      const bPass = b.results.filter((r) => r.passed).length / b.results.length;
-      return aPass - bPass;
-    });
+    console.log(`\nResults: ${this.filePath}`);
 
     let apiCost = 0;
     let cliCost = 0;
@@ -127,43 +110,6 @@ export class Reporter {
       if (r.executionMode === 'api') apiCost += r.costUSD;
       else cliCost += r.costUSD;
     }
-
-    console.log('\n');
-    const line = '═'.repeat(89);
-    const hline = '╬'.repeat(1);
-    console.log(`╔${line}╗`);
-    console.log(`║${'  LLM DEV BENCHMARK — SUMMARY'.padEnd(89)}║`);
-    console.log(`╠${'════════════════════'.padEnd(20, '═')}╦${'══════'.padEnd(6, '═')}╦${'════════════'.padEnd(12, '═')}╦${'═══════════'.padEnd(11, '═')}╦${'══════════'.padEnd(10, '═')}╦${'═══════════'.padEnd(11, '═')}╦${'════════'.padEnd(8, '═')}╣`);
-    console.log(`║ ${'Model / Agent'.padEnd(19)}║ ${'Mode'.padEnd(5)}║ ${'Pass Rate'.padEnd(11)}║ ${'Avg Score'.padEnd(10)}║ ${'Avg Cost'.padEnd(9)}║ ${'Avg Tokens'.padEnd(10)}║ ${'p50 ms'.padEnd(7)}║`);
-    console.log(`╠${'════════════════════'.padEnd(20, '═')}╬${'══════'.padEnd(6, '═')}╬${'════════════'.padEnd(12, '═')}╬${'═══════════'.padEnd(11, '═')}╬${'══════════'.padEnd(10, '═')}╬${'═══════════'.padEnd(11, '═')}╬${'════════'.padEnd(8, '═')}╣`);
-
-    for (const entry of entries) {
-      const { results, displayName, mode } = entry;
-      const passCount = results.filter((r) => r.passed).length;
-      const passRate = `${((passCount / results.length) * 100).toFixed(1)}%`;
-      const avgScore = (results.reduce((s, r) => s + r.qualityScore, 0) / results.length).toFixed(1);
-      const avgCost = results.reduce((s, r) => s + r.costUSD, 0) / results.length;
-      const hasEstimated = results.some((r) => r.tokensSource === 'estimated');
-      const costStr = `${hasEstimated ? '~' : ''}$${avgCost.toFixed(4)}`;
-      const avgTokens = Math.round(results.reduce((s, r) => s + r.totalTokens, 0) / results.length);
-      const tokenStr = `${hasEstimated ? '~' : ''}${avgTokens.toLocaleString()}`;
-      const latencies = results.map((r) => r.latencyMs).sort((a, b) => a - b);
-      const p50 = latencies[Math.floor(latencies.length / 2)];
-      const p50Str = p50 ? p50.toLocaleString() : 'N/A';
-
-      const name = displayName.slice(0, 19).padEnd(19);
-      console.log(
-        `║ ${name}║ ${mode.padEnd(5)}║ ${passRate.padEnd(11)}║ ${`${avgScore}/5`.padEnd(10)}║ ${costStr.padEnd(9)}║ ${tokenStr.padEnd(10)}║ ${p50Str.padEnd(7)}║`
-      );
-    }
-
-    console.log(`╚${'════════════════════'.padEnd(20, '═')}╩${'══════'.padEnd(6, '═')}╩${'════════════'.padEnd(12, '═')}╩${'═══════════'.padEnd(11, '═')}╩${'══════════'.padEnd(10, '═')}╩${'═══════════'.padEnd(11, '═')}╩${'════════'.padEnd(8, '═')}╝`);
-
-    if (allResults.some((r) => r.tokensSource === 'estimated')) {
-      console.log('~ = estimated (CLI mode, tokens not available from agent)');
-    }
-
-    console.log(`\nResults: ${this.filePath}`);
     console.log(
       `API cost: $${apiCost.toFixed(2)}  |  CLI cost (estimated): ~$${cliCost.toFixed(2)}  |  Total: ~$${(apiCost + cliCost).toFixed(2)}`
     );
@@ -184,4 +130,141 @@ function formatDuration(ms: number): string {
   if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
   if (m > 0) return `${m}m ${s % 60}s`;
   return `${s}s`;
+}
+
+// ─── Standalone summary table (reused by summarize command) ──────────────────
+
+function printSummaryTable(allResults: JobResult[]): void {
+  const groups = new Map<string, SummaryEntry>();
+  for (const r of allResults) {
+    const key = `${r.modelId}::${r.executionMode}`;
+    if (!groups.has(key)) {
+      groups.set(key, { displayName: r.modelDisplayName, mode: r.executionMode, provider: r.provider, results: [] });
+    }
+    groups.get(key)!.results.push(r);
+  }
+
+  const entries = Array.from(groups.values()).sort((a, b) => {
+    const aPass = a.results.filter((r) => r.passed).length / a.results.length;
+    const bPass = b.results.filter((r) => r.passed).length / b.results.length;
+    return aPass - bPass;
+  });
+
+  console.log('\n');
+  const line = '═'.repeat(89);
+  console.log(`╔${line}╗`);
+  console.log(`║${'  LLM DEV BENCHMARK — SUMMARY'.padEnd(89)}║`);
+  console.log(`╠${'════════════════════'.padEnd(20, '═')}╦${'══════'.padEnd(6, '═')}╦${'════════════'.padEnd(12, '═')}╦${'═══════════'.padEnd(11, '═')}╦${'══════════'.padEnd(10, '═')}╦${'═══════════'.padEnd(11, '═')}╦${'════════'.padEnd(8, '═')}╣`);
+  console.log(`║ ${'Model / Agent'.padEnd(19)}║ ${'Mode'.padEnd(5)}║ ${'Pass Rate'.padEnd(11)}║ ${'Avg Score'.padEnd(10)}║ ${'Avg Cost'.padEnd(9)}║ ${'Avg Tokens'.padEnd(10)}║ ${'p50 ms'.padEnd(7)}║`);
+  console.log(`╠${'════════════════════'.padEnd(20, '═')}╬${'══════'.padEnd(6, '═')}╬${'════════════'.padEnd(12, '═')}╬${'═══════════'.padEnd(11, '═')}╬${'══════════'.padEnd(10, '═')}╬${'═══════════'.padEnd(11, '═')}╬${'════════'.padEnd(8, '═')}╣`);
+
+  for (const entry of entries) {
+    const { results, displayName, mode } = entry;
+    const passCount = results.filter((r) => r.passed).length;
+    const passRate = `${((passCount / results.length) * 100).toFixed(1)}%`;
+    const avgScore = (results.reduce((s, r) => s + r.qualityScore, 0) / results.length).toFixed(1);
+    const avgCost = results.reduce((s, r) => s + r.costUSD, 0) / results.length;
+    const hasEstimated = results.some((r) => r.tokensSource === 'estimated');
+    const costStr = `${hasEstimated ? '~' : ''}$${avgCost.toFixed(4)}`;
+    const avgTokens = Math.round(results.reduce((s, r) => s + r.totalTokens, 0) / results.length);
+    const tokenStr = `${hasEstimated ? '~' : ''}${avgTokens.toLocaleString()}`;
+    const latencies = results.map((r) => r.latencyMs).sort((a, b) => a - b);
+    const p50 = latencies[Math.floor(latencies.length / 2)];
+    const p50Str = p50 ? p50.toLocaleString() : 'N/A';
+
+    const name = displayName.slice(0, 19).padEnd(19);
+    console.log(
+      `║ ${name}║ ${mode.padEnd(5)}║ ${passRate.padEnd(11)}║ ${`${avgScore}/5`.padEnd(10)}║ ${costStr.padEnd(9)}║ ${tokenStr.padEnd(10)}║ ${p50Str.padEnd(7)}║`
+    );
+  }
+
+  console.log(`╚${'════════════════════'.padEnd(20, '═')}╩${'══════'.padEnd(6, '═')}╩${'════════════'.padEnd(12, '═')}╩${'═══════════'.padEnd(11, '═')}╩${'══════════'.padEnd(10, '═')}╩${'═══════════'.padEnd(11, '═')}╩${'════════'.padEnd(8, '═')}╝`);
+
+  if (allResults.some((r) => r.tokensSource === 'estimated')) {
+    console.log('~ = estimated (CLI mode, tokens not available from agent)');
+  }
+}
+
+// ─── Parse an existing CSV into JobResult[] ──────────────────────────────────
+
+/** Parse a single CSV line respecting quoted fields. */
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(current); current = '';
+    } else {
+      current += ch;
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
+function parseCsvFile(filePath: string): JobResult[] {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  return lines.slice(1)
+    .map((line: string) => parseCSVLine(line))
+    .filter((f: string[]) => f.length >= 22 && f[6] !== '')
+    .map((f: string[]) => ({
+      timestamp:        f[0],
+      jobId:            f[1],
+      jobName:          f[2],
+      language:         f[3] as Language,
+      executionMode:    f[4] as 'api' | 'cli',
+      provider:         f[5],
+      modelId:          f[6],
+      modelDisplayName: f[7],
+      runNumber:        parseInt(f[8])  || 1,
+      inputTokens:      parseInt(f[9])  || 0,
+      outputTokens:     parseInt(f[10]) || 0,
+      totalTokens:      parseInt(f[11]) || 0,
+      tokensSource:     f[12] as 'exact' | 'estimated',
+      costUSD:          parseFloat(f[13]) || 0,
+      latencyMs:        parseInt(f[14]) || 0,
+      turns:            parseInt(f[15]) || 1,
+      passed:           f[16] === 'true',
+      qualityScore:     parseFloat(f[17]) || 0,
+      qualityNotes:     f[18],
+      errorMessage:     f[19] || undefined,
+      rawPrompt:        '',
+      rawResponse:      '',
+    }));
+}
+
+/**
+ * Read an existing benchmark CSV (regular or Docker-merged) and print the
+ * summary table.  Called by `llm-dev-bench summarize <file>`.
+ */
+export function printSummaryFromCSV(filePath: string): void {
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    console.error(`File not found: ${resolved}`);
+    process.exit(1);
+  }
+
+  const results = parseCsvFile(resolved);
+  if (results.length === 0) {
+    console.log('No valid rows found in CSV.');
+    return;
+  }
+
+  const totalCost = results.reduce((s, r) => s + r.costUSD, 0);
+  const passCount = results.filter((r) => r.passed).length;
+
+  printSummaryTable(results);
+
+  console.log(`\nFile: ${resolved}`);
+  console.log(
+    `Rows: ${results.length}  |  Passed: ${passCount}/${results.length}  |  Total cost: ~$${totalCost.toFixed(2)}`
+  );
 }

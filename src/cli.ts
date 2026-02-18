@@ -17,7 +17,7 @@ import { ClaudeCodeAgent } from './cli-agents/claude-code.agent';
 import { GeminiCLIAgent } from './cli-agents/gemini.agent';
 import { CodexCLIAgent } from './cli-agents/codex.agent';
 import { Runner, ModelConfig, AgentConfig } from './runner';
-import { Reporter } from './reporter';
+import { Reporter, printSummaryFromCSV } from './reporter';
 
 // ─── YAML config types ──────────────────────────────────────────────────────
 
@@ -235,6 +235,15 @@ program
       console.log(`  ${job.id.padEnd(5)} ${job.name.padEnd(45)} [${job.evaluationType}] langs: ${langs}`);
     }
     console.log('');
+  });
+
+// ─── summarize command ────────────────────────────────────────────────────────
+
+program
+  .command('summarize <csvFile>')
+  .description('Print a summary table from an existing benchmark CSV (useful after Docker runs)')
+  .action((csvFile: string) => {
+    printSummaryFromCSV(csvFile);
   });
 
 program.parseAsync(process.argv).catch((err) => {
