@@ -1,6 +1,9 @@
 import OpenAI from 'openai';
 import { ModelAdapter, AdapterCompleteRequest, AdapterCompleteResponse } from './base.adapter';
 
+// These models require max_completion_tokens instead of max_tokens and don't support temperature
+const REASONING_MODELS = /^(o1|o3|o4|gpt-5)/;
+
 export class OpenAIAdapter implements ModelAdapter {
   private client: OpenAI;
   provider = 'openai';
@@ -21,10 +24,13 @@ export class OpenAIAdapter implements ModelAdapter {
     }
     messages.push({ role: 'user', content: request.userPrompt });
 
+    const isReasoning = REASONING_MODELS.test(this.modelId);
+
     const response = await this.client.chat.completions.create({
       model: this.modelId,
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: request.temperature ?? 0,
+      ...(isReasoning
+        ? { max_completion_tokens: request.maxTokens ?? 4096 }
+        : { max_tokens: request.maxTokens ?? 4096, temperature: request.temperature ?? 0 }),
       messages,
     });
 

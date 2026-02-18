@@ -9,7 +9,9 @@ import { execSync } from 'child_process';
 import { Language } from './jobs/base.job';
 import { resolveJobs, getAllJobs } from './jobs/registry';
 import { AnthropicAdapter } from './adapters/anthropic.adapter';
+import { AnthropicVertexAdapter } from './adapters/anthropic-vertex.adapter';
 import { OpenAIAdapter } from './adapters/openai.adapter';
+import { OpenAIResponsesAdapter } from './adapters/openai-responses.adapter';
 import { GoogleAdapter } from './adapters/google.adapter';
 import { APIExecutor } from './execution/api-executor';
 import { CLIExecutor } from './execution/cli-executor';
@@ -51,15 +53,25 @@ function loadAgentsConfig(): AgentYaml[] {
 }
 
 function buildModelConfigs(ids: string[], allModels: ModelYaml[]): ModelConfig[] {
-  return ids.map((id) => {
+  const resolved = ids.length === 1 && ids[0] === 'all' ? allModels : ids.map((id) => {
     const cfg = allModels.find((m) => m.id === id);
     if (!cfg) throw new Error(`Unknown model: ${id}. Check config/models.yaml.`);
+    return cfg;
+  });
+  return resolved.map((cfg) => {
 
     let executor;
     if (cfg.provider === 'anthropic') {
-      executor = new APIExecutor(new AnthropicAdapter(cfg.modelId, cfg.displayName));
+      const backend = process.env.ANTHROPIC_BACKEND ?? 'api';
+      if (backend === 'vertex') {
+        executor = new APIExecutor(new AnthropicVertexAdapter(cfg.modelId, cfg.displayName));
+      } else {
+        executor = new APIExecutor(new AnthropicAdapter(cfg.modelId, cfg.displayName));
+      }
     } else if (cfg.provider === 'openai') {
       executor = new APIExecutor(new OpenAIAdapter(cfg.modelId, cfg.displayName));
+    } else if (cfg.provider === 'openai-responses') {
+      executor = new APIExecutor(new OpenAIResponsesAdapter(cfg.modelId, cfg.displayName));
     } else if (cfg.provider === 'google') {
       executor = new APIExecutor(new GoogleAdapter(cfg.modelId, cfg.displayName));
     } else {
@@ -132,20 +144,25 @@ program
   .command('run')
   .description('Run the benchmark')
   .requiredOption('--mode <mode>', 'Execution mode: api | cli | both')
-  .option('--models <ids>', 'Comma-separated model IDs from config/models.yaml')
+  .option('--models <ids>', 'Comma-separated model IDs or "all" (from config/models.yaml)')
   .option('--agents <ids>', 'Comma-separated agent IDs from config/agents.yaml')
   .option('--jobs <ids>', 'Comma-separated job IDs or "all" (default: all)', 'all')
-  .option('--languages <langs>', 'Comma-separated languages: nodejs,java,dotnet (default: nodejs)', 'nodejs')
+  .option('--languages <langs>', 'Comma-separated languages or "all": nodejs,java,dotnet (default: nodejs)', 'nodejs')
   .option('--runs <n>', 'Runs per combination (default: 3)', '3')
-  .option('--concurrent <n>', 'Max concurrent executions (default: 3)', '3')
+  .option('--concurrent <n>', 'Max concurrent executions per provider (default: 3)', '3')
   .option('--output <dir>', 'Output directory for CSV results', process.env.RESULTS_DIR ?? './results')
   .option('--dry-run', 'Show what would run without calling any model')
+  .option('--max-iterations <n>', 'Max retry iterations per job if it fails (default: 1, no retry)', '1')
   .action(async (opts) => {
     const mode: string = opts.mode;
     const jobIds: string[] = opts.jobs.split(',').map((s: string) => s.trim());
-    const languages: Language[] = opts.languages.split(',').map((s: string) => s.trim() as Language);
+    const ALL_LANGUAGES: Language[] = ['nodejs', 'java', 'dotnet'];
+    const languages: Language[] = opts.languages === 'all'
+      ? ALL_LANGUAGES
+      : opts.languages.split(',').map((s: string) => s.trim() as Language);
     const runsPerCombo = parseInt(opts.runs);
     const maxConcurrent = parseInt(opts.concurrent);
+    const maxIterations = parseInt(opts.maxIterations);
     const dryRun: boolean = opts.dryRun ?? false;
 
     const allModels = loadModelsConfig();
@@ -176,7 +193,7 @@ program
     console.log(`Mode: ${mode}  |  Jobs: ${jobs.length}  |  Languages: ${languages.join(', ')}`);
     console.log(`Models: ${models.map((m) => m.displayName).join(', ') || 'none'}`);
     console.log(`Agents: ${agents.map((a) => a.displayName).join(', ') || 'none'}`);
-    console.log(`Runs per combo: ${runsPerCombo}  |  Max concurrent: ${maxConcurrent}`);
+    console.log(`Runs per combo: ${runsPerCombo}  |  Max concurrent per provider: ${maxConcurrent}  |  Max iterations: ${maxIterations}`);
     console.log('');
 
     const reporter = new Reporter(opts.output);
@@ -191,6 +208,7 @@ program
       maxConcurrent,
       outputDir: opts.output,
       dryRun,
+      maxIterations,
     }, reporter);
 
     if (!dryRun) {
@@ -233,6 +251,46 @@ program
     for (const job of jobs) {
       const langs = job.supportedLanguages.join(', ');
       console.log(`  ${job.id.padEnd(5)} ${job.name.padEnd(45)} [${job.evaluationType}] langs: ${langs}`);
+    }
+    console.log('');
+  });
+
+// ─── report command ──────────────────────────────────────────────────────────
+
+program
+  .command('report')
+  .description('Generate PDF report from benchmark CSV results')
+  .requiredOption('--input <csv>', 'Path to benchmark CSV file')
+  .option('--output <dir>', 'Output directory for PDF reports', process.env.RESULTS_DIR ?? './results')
+  .option('--lang <lang>', 'Language: en | pt-br | both (default: both)', 'both')
+  .action(async (opts) => {
+    const { generateReport } = await import('./report/index');
+
+    const langOpt: string = opts.lang;
+    let locales: Array<'en' | 'pt-br'>;
+    if (langOpt === 'both') {
+      locales = ['en', 'pt-br'];
+    } else if (langOpt === 'en' || langOpt === 'pt-br') {
+      locales = [langOpt];
+    } else {
+      console.error(`Invalid --lang value: ${langOpt}. Use: en | pt-br | both`);
+      process.exit(1);
+    }
+
+    console.log(`\nLLM Dev Bench — Report Generator`);
+    console.log(`Input: ${opts.input}`);
+    console.log(`Output: ${opts.output}`);
+    console.log(`Languages: ${locales.join(', ')}\n`);
+
+    const outputFiles = await generateReport({
+      inputFile: opts.input,
+      outputDir: opts.output,
+      locales,
+    });
+
+    console.log(`\nReport generation complete. Files:`);
+    for (const f of outputFiles) {
+      console.log(`  ${f}`);
     }
     console.log('');
   });
