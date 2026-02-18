@@ -15,6 +15,7 @@ import { OpenAIResponsesAdapter } from './adapters/openai-responses.adapter';
 import { GoogleAdapter } from './adapters/google.adapter';
 import { APIExecutor } from './execution/api-executor';
 import { CLIExecutor } from './execution/cli-executor';
+import { FullstackCLIExecutor } from './execution/fullstack-cli-executor';
 import { ClaudeCodeAgent } from './cli-agents/claude-code.agent';
 import { GeminiCLIAgent } from './cli-agents/gemini.agent';
 import { CodexCLIAgent } from './cli-agents/codex.agent';
@@ -50,6 +51,28 @@ function loadAgentsConfig(): AgentYaml[] {
   const file = path.join(process.cwd(), 'config', 'agents.yaml');
   const raw = yaml.load(fs.readFileSync(file, 'utf-8')) as { agents: AgentYaml[] };
   return raw.agents;
+}
+
+// Provider groups: maps user-facing provider names to internal provider values.
+// --providers openai includes both openai (Chat Completions) and openai-responses (Codex).
+const PROVIDER_GROUPS: Record<string, string[]> = {
+  anthropic: ['anthropic'],
+  openai: ['openai', 'openai-responses'],
+  google: ['google'],
+};
+
+function resolveProviderModels(providerIds: string[], allModels: ModelYaml[]): ModelYaml[] {
+  const expandedProviders: string[] = [];
+  for (const pid of providerIds) {
+    const group = PROVIDER_GROUPS[pid];
+    if (!group) {
+      throw new Error(
+        `Unknown provider: ${pid}. Available providers: ${Object.keys(PROVIDER_GROUPS).join(', ')}`
+      );
+    }
+    expandedProviders.push(...group);
+  }
+  return allModels.filter((m) => expandedProviders.includes(m.provider));
 }
 
 function buildModelConfigs(ids: string[], allModels: ModelYaml[]): ModelConfig[] {
@@ -93,32 +116,38 @@ function buildAgentConfigs(ids: string[], allAgents: AgentYaml[]): AgentConfig[]
   const agentMap: Record<string, () => AgentConfig> = {
     'claude-code': () => {
       const cfg = allAgents.find((a) => a.id === 'claude-code')!;
+      const agent = new ClaudeCodeAgent();
       return {
         id: cfg.id,
         displayName: cfg.displayName,
         provider: cfg.provider,
         estimatedPricing: cfg.estimatedPricing,
-        executor: new CLIExecutor(new ClaudeCodeAgent()),
+        executor: new CLIExecutor(agent),
+        fullstackExecutor: new FullstackCLIExecutor(agent),
       };
     },
     'gemini-cli': () => {
       const cfg = allAgents.find((a) => a.id === 'gemini-cli')!;
+      const agent = new GeminiCLIAgent();
       return {
         id: cfg.id,
         displayName: cfg.displayName,
         provider: cfg.provider,
         estimatedPricing: cfg.estimatedPricing,
-        executor: new CLIExecutor(new GeminiCLIAgent()),
+        executor: new CLIExecutor(agent),
+        fullstackExecutor: new FullstackCLIExecutor(agent),
       };
     },
     'codex-cli': () => {
       const cfg = allAgents.find((a) => a.id === 'codex-cli')!;
+      const agent = new CodexCLIAgent();
       return {
         id: cfg.id,
         displayName: cfg.displayName,
         provider: cfg.provider,
         estimatedPricing: cfg.estimatedPricing,
-        executor: new CLIExecutor(new CodexCLIAgent()),
+        executor: new CLIExecutor(agent),
+        fullstackExecutor: new FullstackCLIExecutor(agent),
       };
     },
   };
@@ -145,6 +174,7 @@ program
   .description('Run the benchmark')
   .requiredOption('--mode <mode>', 'Execution mode: api | cli | both')
   .option('--models <ids>', 'Comma-separated model IDs or "all" (from config/models.yaml)')
+  .option('--providers <ids>', 'Comma-separated provider names to include all their models (anthropic, openai, google)')
   .option('--agents <ids>', 'Comma-separated agent IDs from config/agents.yaml')
   .option('--jobs <ids>', 'Comma-separated job IDs or "all" (default: all)', 'all')
   .option('--languages <langs>', 'Comma-separated languages or "all": nodejs,java,dotnet (default: nodejs)', 'nodejs')
@@ -169,22 +199,39 @@ program
     const allAgentsCfg = loadAgentsConfig();
 
     const modelIds: string[] = (opts.models ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    const providerIds: string[] = (opts.providers ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
     const agentIds: string[] = (opts.agents ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
 
-    if (mode === 'api' && modelIds.length === 0) {
-      console.error('--models is required for mode=api');
+    // Resolve: union of --models and --providers
+    let resolvedModelIds: string[] = [];
+    if (modelIds.length === 1 && modelIds[0] === 'all') {
+      resolvedModelIds = ['all'];
+    } else {
+      resolvedModelIds = [...modelIds];
+      if (providerIds.length > 0) {
+        const providerModels = resolveProviderModels(providerIds, allModels);
+        for (const pm of providerModels) {
+          if (!resolvedModelIds.includes(pm.id)) {
+            resolvedModelIds.push(pm.id);
+          }
+        }
+      }
+    }
+
+    if (mode === 'api' && resolvedModelIds.length === 0) {
+      console.error('--models or --providers is required for mode=api');
       process.exit(1);
     }
     if (mode === 'cli' && agentIds.length === 0) {
       console.error('--agents is required for mode=cli');
       process.exit(1);
     }
-    if (mode === 'both' && modelIds.length === 0 && agentIds.length === 0) {
-      console.error('--models and/or --agents required for mode=both');
+    if (mode === 'both' && resolvedModelIds.length === 0 && agentIds.length === 0) {
+      console.error('--models, --providers, and/or --agents required for mode=both');
       process.exit(1);
     }
 
-    const models = mode !== 'cli' ? buildModelConfigs(modelIds, allModels) : [];
+    const models = mode !== 'cli' ? buildModelConfigs(resolvedModelIds, allModels) : [];
     const agents = mode !== 'api' ? buildAgentConfigs(agentIds, allAgentsCfg) : [];
 
     const jobs = resolveJobs(jobIds);
@@ -192,6 +239,9 @@ program
     console.log(`\nLLM Dev Bench`);
     console.log(`Mode: ${mode}  |  Jobs: ${jobs.length}  |  Languages: ${languages.join(', ')}`);
     console.log(`Models: ${models.map((m) => m.displayName).join(', ') || 'none'}`);
+    if (providerIds.length > 0) {
+      console.log(`Providers filter: ${providerIds.join(', ')}`);
+    }
     console.log(`Agents: ${agents.map((a) => a.displayName).join(', ') || 'none'}`);
     console.log(`Runs per combo: ${runsPerCombo}  |  Max concurrent per provider: ${maxConcurrent}  |  Max iterations: ${maxIterations}`);
     console.log('');

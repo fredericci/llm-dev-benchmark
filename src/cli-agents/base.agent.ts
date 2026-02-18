@@ -27,4 +27,18 @@ export interface CLIAgent {
 
   /** Parse usage metadata from agent output. Returns null if unavailable. */
   extractUsage(stdout: string, stderr: string): CLIAgentUsage | null;
+
+  // ─── Agentic mode (fullstack benchmarks) ────────────────────
+
+  /** Whether this agent supports agentic/file-editing mode */
+  supportsAgenticMode?: boolean;
+
+  /** Timeout for agentic mode (default: 300_000 ms = 5 min) */
+  agenticTimeoutMs?: number;
+
+  /**
+   * Build CLI arguments for agentic mode (file-editing in a project directory).
+   * The agent will be spawned with cwd set to the project directory.
+   */
+  buildAgenticArgs?(promptFile: string, request: ExecutionRequest): string[];
 }

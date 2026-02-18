@@ -14,8 +14,16 @@ export class GeminiCLIAgent implements CLIAgent {
   timeoutMs = 120_000;
   env: Record<string, string> = {};
 
+  // ─── Agentic mode ─────────────────────────────────────────
+  supportsAgenticMode = true;
+  agenticTimeoutMs = 300_000;
+
   buildArgs(promptFile: string, _request: ExecutionRequest): string[] {
     return ['--prompt', `@${promptFile}`, '--json'];
+  }
+
+  buildAgenticArgs(promptFile: string, _request: ExecutionRequest): string[] {
+    return ['--approval-mode=yolo', '--output-format', 'json', `@${promptFile}`];
   }
 
   extractContent(stdout: string): string {

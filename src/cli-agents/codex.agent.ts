@@ -15,8 +15,16 @@ export class CodexCLIAgent implements CLIAgent {
   timeoutMs = 120_000;
   env: Record<string, string> = {};
 
+  // ─── Agentic mode ─────────────────────────────────────────
+  supportsAgenticMode = true;
+  agenticTimeoutMs = 300_000;
+
   buildArgs(promptFile: string, _request: ExecutionRequest): string[] {
     return ['--quiet', '--full-auto', `@${promptFile}`];
+  }
+
+  buildAgenticArgs(promptFile: string, _request: ExecutionRequest): string[] {
+    return ['exec', '--full-auto', '--json', `@${promptFile}`];
   }
 
   extractContent(stdout: string): string {

@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import pLimit from 'p-limit';
-import { Executor, ExecutionResult } from './execution/base.executor';
-import { Job, JobInput, JobResult, Language } from './jobs/base.job';
+import { Executor, ExecutionResult, FullstackExecutionResult } from './execution/base.executor';
+import { Job, JobInput, JobResult, Language, isFullstackJob, FullstackJob } from './jobs/base.job';
+import { FullstackCLIExecutor } from './execution/fullstack-cli-executor';
+import { scoreForTurn } from './utils/e2e-scoring';
 import { calculateCost } from './utils/cost-calculator';
 import { PricingConfig } from './utils/cost-calculator';
 import { Evaluator, EvaluationResult } from './evaluator';
@@ -23,6 +25,7 @@ export interface AgentConfig {
   provider: string;
   estimatedPricing: PricingConfig;
   executor: Executor;
+  fullstackExecutor?: Executor;
 }
 
 export interface RunConfig {
@@ -44,6 +47,8 @@ interface ExecutorEntry {
   pricing: PricingConfig;
   isEstimated: boolean;
   executor: Executor;
+  fullstackExecutor?: Executor;
+  isCliMode: boolean;
 }
 
 const FIXTURE_FILENAME: Record<Language, string> = {
@@ -124,6 +129,28 @@ Evaluation result:
 Please review the feedback above and provide a corrected solution.`;
 }
 
+function buildFullstackRetryPrompt(
+  originalPrompt: string,
+  evalResult: EvaluationResult,
+  turn: number,
+): string {
+  return `Your previous implementation did not pass all the end-to-end tests.
+
+RESULTS: attempt ${turn - 1}/3
+
+FAILED TESTS OUTPUT:
+${evalResult.notes}
+${evalResult.errorMessage ? `\nErrors:\n${evalResult.errorMessage}` : ''}
+
+Please review the failing tests above and fix your implementation.
+The project files are in the current directory — you can read them to understand what you previously implemented and what needs to be fixed.
+
+REMINDER — Original requirements:
+${originalPrompt}
+
+IMPORTANT: Focus on fixing the failing tests. Do not rewrite everything from scratch — just fix what's broken.`;
+}
+
 export class Runner {
   private evaluator = new Evaluator();
   private allResults: JobResult[] = [];
@@ -137,6 +164,7 @@ export class Runner {
         pricing: m.pricing,
         isEstimated: false,
         executor: m.executor,
+        isCliMode: false,
       })),
       ...config.agents.map((a) => ({
         displayName: a.displayName,
@@ -145,6 +173,8 @@ export class Runner {
         pricing: a.estimatedPricing,
         isEstimated: true,
         executor: a.executor,
+        fullstackExecutor: a.fullstackExecutor,
+        isCliMode: true,
       })),
     ];
 
@@ -153,6 +183,11 @@ export class Runner {
 
     for (const job of jobs) {
       for (const exec of executors) {
+        // Skip e2e (fullstack) jobs for API-mode executors — they need CLI agents
+        if (isFullstackJob(job) && !exec.isCliMode) continue;
+        // Skip e2e jobs if the CLI agent doesn't have a fullstack executor
+        if (isFullstackJob(job) && !exec.fullstackExecutor) continue;
+
         const langs = config.languages.filter((l) => job.supportedLanguages.includes(l));
         for (const language of langs) {
           for (let run = 1; run <= config.runsPerCombo; run++) {
@@ -210,6 +245,7 @@ export class Runner {
       const additionalContext = await loadAdditionalContext(language, job.id);
       const input: JobInput = { language, fixtureCode, additionalContext };
       const originalPrompt = job.buildPrompt(input);
+      const isE2E = isFullstackJob(job);
 
       let currentPrompt = originalPrompt;
       let lastExecResult: ExecutionResult | undefined;
@@ -219,34 +255,98 @@ export class Runner {
       let cumulativeLatencyMs = 0;
       const iterationScores: number[] = [];
       let passedOnTurn = 0;
+      let projectDir: string | undefined;
+
+      // For fullstack jobs, resolve the base project path
+      const fullstackExecutor = isE2E ? exec.fullstackExecutor as FullstackCLIExecutor : undefined;
 
       for (let turn = 1; turn <= maxIter; turn++) {
-        const execResult = await withRetry(() =>
-          exec.executor.execute({
-            prompt: currentPrompt,
-            systemPrompt: job.systemPrompt,
-            maxTokens: Number.parseInt(process.env.MAX_OUTPUT_TOKENS ?? '4096'),
-            temperature: 0,
-          })
-        );
+        let execResult: ExecutionResult;
 
-        const evalResult = await this.evaluator.evaluate(job, execResult.content, input);
+        if (isE2E && fullstackExecutor) {
+          // Fullstack: run agent in project directory
+          if (turn === 1) {
+            // First turn: copy project and run agent
+            const baseProjectDir = path.join(
+              process.cwd(), 'fixtures', (job as FullstackJob).baseProjectPath,
+            );
+            execResult = await withRetry(() =>
+              fullstackExecutor.execute({
+                prompt: currentPrompt,
+                systemPrompt: baseProjectDir,
+                maxTokens: Number.parseInt(process.env.MAX_OUTPUT_TOKENS ?? '4096'),
+                temperature: 0,
+              })
+            );
+            projectDir = (execResult as FullstackExecutionResult).projectDir;
+          } else {
+            // Retry turn: reuse same project directory
+            execResult = await withRetry(() =>
+              fullstackExecutor.executeInProject(
+                { prompt: currentPrompt, temperature: 0 },
+                projectDir!,
+              )
+            );
+          }
 
-        cumulativeInputTokens += execResult.inputTokens;
-        cumulativeOutputTokens += execResult.outputTokens;
-        cumulativeLatencyMs += execResult.latencyMs;
-        iterationScores.push(evalResult.score);
-        lastExecResult = execResult;
-        lastEvalResult = evalResult;
+          // Evaluate via Playwright
+          const e2eResult = await (job as FullstackJob).evaluateE2E(projectDir!, input);
+          const cappedScore = scoreForTurn(turn, 1, e2eResult.passed ? 1 : 0);
+          const evalResult: EvaluationResult = {
+            passed: e2eResult.passed,
+            score: e2eResult.passed ? cappedScore : e2eResult.score,
+            notes: e2eResult.notes,
+          };
 
-        if (evalResult.passed) {
-          passedOnTurn = turn;
-          break;
+          cumulativeInputTokens += execResult.inputTokens;
+          cumulativeOutputTokens += execResult.outputTokens;
+          cumulativeLatencyMs += execResult.latencyMs;
+          iterationScores.push(evalResult.score);
+          lastExecResult = execResult;
+          lastEvalResult = evalResult;
+
+          if (evalResult.passed) {
+            passedOnTurn = turn;
+            break;
+          }
+
+          if (turn < maxIter) {
+            currentPrompt = buildFullstackRetryPrompt(originalPrompt, evalResult, turn + 1);
+          }
+        } else {
+          // Standard flow: send prompt, get text response, evaluate
+          execResult = await withRetry(() =>
+            exec.executor.execute({
+              prompt: currentPrompt,
+              systemPrompt: job.systemPrompt,
+              maxTokens: Number.parseInt(process.env.MAX_OUTPUT_TOKENS ?? '4096'),
+              temperature: 0,
+            })
+          );
+
+          const evalResult = await this.evaluator.evaluate(job, execResult.content, input);
+
+          cumulativeInputTokens += execResult.inputTokens;
+          cumulativeOutputTokens += execResult.outputTokens;
+          cumulativeLatencyMs += execResult.latencyMs;
+          iterationScores.push(evalResult.score);
+          lastExecResult = execResult;
+          lastEvalResult = evalResult;
+
+          if (evalResult.passed) {
+            passedOnTurn = turn;
+            break;
+          }
+
+          if (turn < maxIter) {
+            currentPrompt = buildRetryPrompt(originalPrompt, execResult.content, evalResult);
+          }
         }
+      }
 
-        if (turn < maxIter) {
-          currentPrompt = buildRetryPrompt(originalPrompt, execResult.content, evalResult);
-        }
+      // Cleanup fullstack project temp directory
+      if (projectDir) {
+        FullstackCLIExecutor.cleanup(projectDir);
       }
 
       const costUSD = calculateCost(cumulativeInputTokens, cumulativeOutputTokens, exec.pricing);

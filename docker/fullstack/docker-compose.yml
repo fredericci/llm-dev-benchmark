@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  benchmark:
+    build:
+      context: ../../
+      dockerfile: docker/fullstack/Dockerfile
+    env_file:
+      - ../../.env
+    environment:
+      - CLI_AGENT_TIMEOUT_MS=300000
+    volumes:
+      - ../../results/fullstack:/app/results
+    command: >
+      node /app/bench/dist/cli.js run
+      --mode cli --agents claude-code
+      --jobs j26,j27,j28,j29,j30,j31
+      --runs 1 --concurrent 1 --max-iterations 3
