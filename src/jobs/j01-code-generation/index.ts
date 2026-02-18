@@ -44,12 +44,13 @@ Return ONLY the implementation file. Tests must pass when run against it.`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j01', 'tests');
-    const result = await runTests(response, input.language, testDir, 'users.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'users.js',
+      java: 'Users.java',
+      dotnet: 'Users.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j01', 'tests');
+    const result = await runTests(response, input.language, testDir, implFileMap[input.language]);
 
     return {
       passed: result.passed,

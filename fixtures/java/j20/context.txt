@@ -1,0 +1,40 @@
+Run #1842 — FAILED (3m 02s)
+Branch: feat/add-retry-utility
+Commit: a3f92c1 — "Add retry utility and sleep helper"
+
++======================================================+
+|  CI FAILURE LOG                                       |
++======================================================+
+
+> mvn test -B
+
+[ERROR] Tests run: 4, Failures: 0, Errors: 4, Skipped: 0
+
+--- maven-surefire-plugin:3.2.5:test (default-test) @ utils ---
+Running UtilsTest
+
+Tests in error:
+  UtilsTest.formatErrorReturnsMessageAndTimestamp:
+    java.lang.ExceptionInInitializerError
+      Caused by: java.lang.ExceptionInInitializerError
+        at Utils.<clinit>(Utils.java:6)
+        at UtilsTest.formatErrorReturnsMessageAndTimestamp(UtilsTest.java:10)
+      Caused by: java.lang.NoClassDefFoundError: Could not initialize class Utils
+        at Config.<clinit>(Config.java:3)
+        ... 1 more
+
+  UtilsTest.sleepResolvesAfterDelay:
+    java.lang.NoClassDefFoundError: Could not initialize class Utils
+
+  UtilsTest.retryCallsFnAndReturnsOnSuccess:
+    java.lang.NoClassDefFoundError: Could not initialize class Utils
+
+  UtilsTest.retryRetriesOnFailureAndEventuallyThrows:
+    java.lang.NoClassDefFoundError: Could not initialize class Utils
+
+Tests run: 4, Failures: 0, Errors: 4, Skipped: 0
+
+[ERROR] There are test errors.
+
+BUILD FAILURE
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.2.5:test

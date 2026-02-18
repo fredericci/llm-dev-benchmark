@@ -33,12 +33,13 @@ ${input.fixtureCode}`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j16', 'tests');
-    const result = await runTests(response, input.language, testDir, 'data-pipeline.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'data-pipeline.js',
+      java: 'DataPipeline.java',
+      dotnet: 'DataPipeline.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j16', 'tests');
+    const result = await runTests(response, input.language, testDir, implFileMap[input.language]);
 
     // Check for callback antipatterns in response
     const hasCallbackNesting = /callback.*callback|\.then.*\.then.*\.then/i.test(response);

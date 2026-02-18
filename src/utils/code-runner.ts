@@ -14,11 +14,11 @@ const TEST_TIMEOUT_MS = 60_000;
 
 /**
  * Extract the first code block from a model response.
- * Handles ```js, ```javascript, ```typescript, ```ts, and plain code.
+ * Handles fenced code blocks for JS, TS, Java, C#, and plain code.
  */
 export function extractCodeFromResponse(response: string): string {
   // Try to extract from fenced code block
-  const fencedMatch = response.match(/```(?:javascript|typescript|js|ts|jsx|tsx)?\n([\s\S]*?)```/);
+  const fencedMatch = response.match(/```(?:javascript|typescript|js|ts|jsx|tsx|java|csharp|cs|c#)?\n([\s\S]*?)```/);
   if (fencedMatch) {
     return fencedMatch[1].trim();
   }
@@ -98,25 +98,169 @@ export async function runNodejsTests(
 }
 
 /**
- * Java test runner stub — returns rubric-style result since Maven is not guaranteed to be available.
+ * Run Java tests using Maven + JUnit 5.
+ * Writes the model response as the implementation file under src/main/java/,
+ * runs `mvn test`, and parses Surefire XML reports.
  */
-export async function runJavaTests(_responseCode: string, _testDir: string): Promise<CodeRunResult> {
-  return {
-    passed: false,
-    output: '',
-    errorMessage: 'Java test execution not implemented in this environment (stub)',
-  };
+export async function runJavaTests(
+  responseCode: string,
+  testDir: string,
+  implFileName: string,
+): Promise<CodeRunResult> {
+  const implPath = path.join(testDir, 'src', 'main', 'java', implFileName);
+
+  try {
+    const code = extractCodeFromResponse(responseCode);
+    fs.writeFileSync(implPath, code, 'utf-8');
+
+    // Clean previous test results
+    const surefireDir = path.join(testDir, 'target', 'surefire-reports');
+    try { fs.rmSync(surefireDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+    const result = spawnSync(
+      'mvn',
+      ['test', '-q', '-B', '-Dstyle.color=never'],
+      {
+        cwd: testDir,
+        timeout: TEST_TIMEOUT_MS,
+        encoding: 'utf-8',
+        env: { ...process.env, CI: 'true' },
+      },
+    );
+
+    const stdout = result.stdout ?? '';
+    const stderr = result.stderr ?? '';
+
+    if (result.status === null) {
+      return { passed: false, output: stderr, errorMessage: 'Test execution timeout' };
+    }
+
+    // Try to parse Surefire XML reports
+    try {
+      if (fs.existsSync(surefireDir)) {
+        const reportFiles = fs.readdirSync(surefireDir).filter(f => f.startsWith('TEST-') && f.endsWith('.xml'));
+        let totalTests = 0;
+        let totalFailures = 0;
+        let totalErrors = 0;
+
+        for (const file of reportFiles) {
+          const xml = fs.readFileSync(path.join(surefireDir, file), 'utf-8');
+          totalTests += parseInt(xml.match(/tests="(\d+)"/)?.[1] ?? '0');
+          totalFailures += parseInt(xml.match(/failures="(\d+)"/)?.[1] ?? '0');
+          totalErrors += parseInt(xml.match(/errors="(\d+)"/)?.[1] ?? '0');
+        }
+
+        if (totalTests > 0) {
+          const passed = totalFailures === 0 && totalErrors === 0;
+          const failed = totalFailures + totalErrors;
+          const notes = passed
+            ? `All ${totalTests} tests passed`
+            : `${failed}/${totalTests} tests failed`;
+          return { passed, output: notes };
+        }
+      }
+    } catch {
+      // fall through to raw output
+    }
+
+    const passed = result.status === 0;
+    return {
+      passed,
+      output: stdout.slice(0, 2000),
+      errorMessage: passed ? undefined : (stderr || stdout).slice(0, 500),
+    };
+  } catch (err) {
+    return {
+      passed: false,
+      output: '',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    try { fs.unlinkSync(implPath); } catch { /* ignore */ }
+  }
 }
 
 /**
- * .NET test runner stub.
+ * Run .NET Core tests using dotnet test + xUnit.
+ * Writes the model response as the implementation file,
+ * runs `dotnet test`, and parses console output.
  */
-export async function runDotnetTests(_responseCode: string, _testDir: string): Promise<CodeRunResult> {
-  return {
-    passed: false,
-    output: '',
-    errorMessage: '.NET test execution not implemented in this environment (stub)',
-  };
+export async function runDotnetTests(
+  responseCode: string,
+  testDir: string,
+  implFileName: string,
+): Promise<CodeRunResult> {
+  const implPath = path.join(testDir, implFileName);
+
+  try {
+    const code = extractCodeFromResponse(responseCode);
+    fs.writeFileSync(implPath, code, 'utf-8');
+
+    const result = spawnSync(
+      'dotnet',
+      ['test', '--nologo', '--verbosity', 'quiet'],
+      {
+        cwd: testDir,
+        timeout: TEST_TIMEOUT_MS,
+        encoding: 'utf-8',
+        env: { ...process.env, CI: 'true', DOTNET_CLI_TELEMETRY_OPTOUT: '1' },
+      },
+    );
+
+    const stdout = result.stdout ?? '';
+    const stderr = result.stderr ?? '';
+
+    if (result.status === null) {
+      return { passed: false, output: stderr, errorMessage: 'Test execution timeout' };
+    }
+
+    // Try to parse dotnet test summary output
+    const combined = stdout + '\n' + stderr;
+    try {
+      // Format: "Passed: X, Failed: Y, Skipped: Z, Total: T"
+      const summaryMatch = combined.match(/Passed[:\s]+(\d+).*Failed[:\s]+(\d+).*Total[:\s]+(\d+)/i);
+      if (summaryMatch) {
+        const passedCount = parseInt(summaryMatch[1]);
+        const failedCount = parseInt(summaryMatch[2]);
+        const totalCount = parseInt(summaryMatch[3]);
+        const passed = failedCount === 0 && totalCount > 0;
+        const notes = passed
+          ? `All ${passedCount} tests passed`
+          : `${failedCount}/${totalCount} tests failed`;
+        return { passed, output: notes };
+      }
+
+      // Alternative format: "Total tests: X. Passed: Y. Failed: Z."
+      const altMatch = combined.match(/Total tests:\s*(\d+)\.\s*Passed:\s*(\d+)\.\s*Failed:\s*(\d+)/i);
+      if (altMatch) {
+        const totalCount = parseInt(altMatch[1]);
+        const passedCount = parseInt(altMatch[2]);
+        const failedCount = parseInt(altMatch[3]);
+        const passed = failedCount === 0 && totalCount > 0;
+        const notes = passed
+          ? `All ${passedCount} tests passed`
+          : `${failedCount}/${totalCount} tests failed`;
+        return { passed, output: notes };
+      }
+    } catch {
+      // fall through to raw output
+    }
+
+    const passed = result.status === 0;
+    return {
+      passed,
+      output: stdout.slice(0, 2000),
+      errorMessage: passed ? undefined : (stderr || stdout).slice(0, 500),
+    };
+  } catch (err) {
+    return {
+      passed: false,
+      output: '',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    try { fs.unlinkSync(implPath); } catch { /* ignore */ }
+  }
 }
 
 /**
@@ -132,9 +276,9 @@ export async function runTests(
     case 'nodejs':
       return runNodejsTests(responseCode, testDir, implFileName);
     case 'java':
-      return runJavaTests(responseCode, testDir);
+      return runJavaTests(responseCode, testDir, implFileName);
     case 'dotnet':
-      return runDotnetTests(responseCode, testDir);
+      return runDotnetTests(responseCode, testDir, implFileName);
     default:
       return { passed: false, output: '', errorMessage: `Unsupported language: ${language}` };
   }

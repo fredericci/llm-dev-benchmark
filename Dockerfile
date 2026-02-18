@@ -21,6 +21,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Java 17 + Maven ─────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk-headless \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# ── .NET 8 SDK ───────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
+    && rm /tmp/dotnet-install.sh \
+    && rm -rf /var/lib/apt/lists/*
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+
 WORKDIR /app
 
 # ── Install CLI agents globally ───────────────────────────────────────────────
@@ -48,7 +66,7 @@ COPY scripts/  ./scripts/
 # ── Build TypeScript ─────────────────────────────────────────────────────────
 RUN npm run build
 
-# ── Install fixture test dependencies (Jest etc.) ────────────────────────────
+# ── Install fixture test dependencies (Jest, Maven, dotnet) ──────────────────
 RUN bash scripts/setup-fixtures.sh || true
 
 # Results directory (will be overridden by host volume mount)

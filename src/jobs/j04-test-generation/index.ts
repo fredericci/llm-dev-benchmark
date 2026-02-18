@@ -42,12 +42,13 @@ ${input.fixtureCode}`;
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }> {
-    if (input.language !== 'nodejs') {
-      return { passed: false, score: 0, notes: `${input.language} test execution not supported (stub)` };
-    }
-
-    const testDir = path.join(process.cwd(), 'fixtures', 'nodejs', 'j04', 'tests');
-    const result = await runTests(response, input.language, testDir, 'discount.test.js');
+    const implFileMap: Record<Language, string> = {
+      nodejs: 'discount.test.js',
+      java: 'DiscountTest.java',
+      dotnet: 'DiscountTests.cs',
+    };
+    const testDir = path.join(process.cwd(), 'fixtures', input.language, 'j04', 'tests');
+    const result = await runTests(response, input.language, testDir, implFileMap[input.language]);
 
     const edgeCaseCount = (response.match(/vip|VIP|maximum|max.*30|boundary|null|undefined|NaN/gi) ?? []).length;
     const hasEnoughEdgeCases = edgeCaseCount >= 3;

@@ -46,13 +46,19 @@ interface ExecutorEntry {
   executor: Executor;
 }
 
+const FIXTURE_FILENAME: Record<Language, string> = {
+  nodejs: 'fixture.js',
+  java: 'Fixture.java',
+  dotnet: 'Fixture.cs',
+};
+
 async function loadFixture(language: Language, jobId: string): Promise<string> {
   const fixturePath = path.join(
     process.cwd(),
     'fixtures',
     language,
     jobId,
-    'fixture.js',
+    FIXTURE_FILENAME[language],
   );
   try {
     return await fs.promises.readFile(fixturePath, 'utf-8');
