@@ -240,6 +240,8 @@ function parseCsvFile(filePath: string): JobResult[] {
       qualityScore:     parseFloat(f[17]) || 0,
       qualityNotes:     f[18],
       errorMessage:     f[19] || undefined,
+      iterationScores:  f[22] || '',
+      passedOnTurn:     parseInt(f[23]) || 0,
       rawPrompt:        '',
       rawResponse:      '',
     }));
