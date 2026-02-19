@@ -44,6 +44,7 @@ export interface ModelSummary {
   avgOutputTokens: number;
   avgTotalTokens: number;
   hasEstimatedTokens: boolean;
+  costPerSuccess: number;
 }
 
 export interface LanguageRanking {
@@ -74,12 +75,50 @@ export interface SpeedAccuracyEntry {
   meetsThreshold: boolean;
 }
 
+export interface ScoreVsCostEntry {
+  model: ModelSummary;
+  isZeroCost: boolean;
+}
+
+export interface JobDifficulty {
+  jobId: string;
+  jobName: string;
+  totalRuns: number;
+  passRate: number;
+  avgScore: number;
+  failedModels: number;
+  totalModels: number;
+}
+
+export interface HeatmapCell {
+  modelDisplayName: string;
+  jobId: string;
+  avgScore: number;
+  passed: boolean;
+}
+
+export interface HeatmapData {
+  models: string[];
+  jobs: string[];
+  cells: HeatmapCell[][];
+}
+
+export interface RetryAnalysisEntry {
+  model: ModelSummary;
+  avgTurnsUsed: number;
+  retryBenefit: number;
+  passRateFirstTurn: number;
+  passRateFinal: number;
+}
+
 export interface AnalysisResult {
   // Raw data
   rows: BenchmarkRow[];
   totalModels: number;
   totalJobs: number;
   totalRuns: number;
+  totalErrors: number;
+  totalRunsIncludingErrors: number;
   sourceFile: string;
   generatedAt: string;
 
@@ -88,15 +127,23 @@ export interface AnalysisResult {
   costEfficiency: CostEfficiencyEntry[];
   languageRankings: LanguageRanking[];
   speedAccuracy: SpeedAccuracyEntry[];
+  scoreVsCost: ScoreVsCostEntry[];
+  medianCostUsd: number;
   apiOnlyRanking: ModelSummary[];
   tokenAnalysis: ModelSummary[];
   categoryRankings: CategoryRanking[];
+  jobDifficulty: JobDifficulty[];
+  heatmapData: HeatmapData;
+  retryAnalysis: RetryAnalysisEntry[];
 }
 
 export interface ChartBuffers {
   passRateBar: Buffer;
   costEfficiencyBar: Buffer;
   speedQualityScatter: Buffer;
+  scoreVsCostScatter: Buffer;
   tokenStackedBar: Buffer;
   categoryGroupedBar: Buffer;
+  difficultyBar: Buffer;
+  costPerSuccessBar: Buffer;
 }

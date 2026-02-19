@@ -11,6 +11,8 @@ services:
       - CLI_AGENT_TIMEOUT_MS=300000
     volumes:
       - ../../results/fullstack:/app/results
+      # Mount GCP credentials for Claude Code Vertex AI authentication
+      - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
     command: >
       node /app/bench/dist/cli.js run
       --mode cli --agents claude-code

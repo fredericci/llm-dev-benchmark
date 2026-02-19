@@ -57,6 +57,7 @@ for agent in "${AGENT_LIST[@]}"; do
       --env-file "$ENV_FILE" \
       -e CLI_AGENT_TIMEOUT_MS=300000 \
       -v "${COMBO_DIR}:/app/results" \
+      -v "${HOME}/.config/gcloud:/root/.config/gcloud:ro" \
       "$IMAGE" \
       node /app/bench/dist/cli.js run \
         --mode cli --agents "$agent" \

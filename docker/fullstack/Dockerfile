@@ -32,23 +32,23 @@ FROM playwright AS project-deps
 
 WORKDIR /app
 
-# Backend deps
+# Backend deps (include devDependencies for nest build, typescript, etc.)
 COPY fixtures/fullstack/base-project/backend/package.json \
      fixtures/fullstack/base-project/backend/package-lock.json* \
      /app/base-project/backend/
-RUN cd /app/base-project/backend && npm install
+RUN cd /app/base-project/backend && NODE_ENV=development npm install && npm rebuild better-sqlite3
 
-# Frontend deps
+# Frontend deps (include devDependencies for vite, typescript, etc.)
 COPY fixtures/fullstack/base-project/frontend/package.json \
      fixtures/fullstack/base-project/frontend/package-lock.json* \
      /app/base-project/frontend/
-RUN cd /app/base-project/frontend && npm install
+RUN cd /app/base-project/frontend && NODE_ENV=development npm install
 
 # E2E deps
 COPY fixtures/fullstack/base-project/e2e/package.json \
      fixtures/fullstack/base-project/e2e/package-lock.json* \
      /app/base-project/e2e/
-RUN cd /app/base-project/e2e && npm install
+RUN cd /app/base-project/e2e && NODE_ENV=development npm install
 
 # Stage 5: Final image
 FROM project-deps AS final
@@ -62,6 +62,7 @@ RUN cd /app/bench && npm ci
 COPY tsconfig.json /app/bench/
 COPY src/ /app/bench/src/
 COPY config/ /app/bench/config/
+COPY fixtures/ /app/bench/fixtures/
 RUN cd /app/bench && npm run build
 
 # Copy Docker scripts
@@ -74,6 +75,6 @@ ENV NODE_ENV=production
 ENV RESULTS_DIR=/app/results
 ENV BASE_PROJECT_DIR=/app/base-project
 
-WORKDIR /app
+WORKDIR /app/bench
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["--help"]

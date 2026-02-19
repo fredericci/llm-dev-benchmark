@@ -25,13 +25,24 @@ export function spawnWithTimeout(
   env: Record<string, string>,
   timeoutMs: number,
   cwd?: string,
+  stdinData?: string,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
+    // Remove CLAUDECODE env var to allow spawning CLI agents from within Claude Code
+    const spawnEnv = { ...process.env, ...env };
+    delete spawnEnv.CLAUDECODE;
+
     const proc = spawn(binary, args, {
-      env: { ...process.env, ...env },
+      env: spawnEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
       ...(cwd ? { cwd } : {}),
     });
+
+    // Send prompt via stdin if provided
+    if (stdinData) {
+      proc.stdin.write(stdinData);
+      proc.stdin.end();
+    }
 
     let stdout = '';
     let stderr = '';
@@ -70,9 +81,13 @@ export class CLIExecutor implements Executor {
     try {
       promptFile = await writeTempFile(request.prompt);
 
+      const args = this.agent.buildArgs(promptFile, request);
+      // Append prompt as positional argument for agents that use it (e.g. Claude Code)
+      args.push(request.prompt);
+
       const { stdout, stderr } = await spawnWithTimeout(
         this.agent.binary,
-        this.agent.buildArgs(promptFile, request),
+        args,
         this.agent.env,
         this.agent.timeoutMs,
       );

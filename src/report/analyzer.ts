@@ -6,7 +6,12 @@ import {
   CategoryRanking,
   CostEfficiencyEntry,
   SpeedAccuracyEntry,
+  ScoreVsCostEntry,
   LanguageRanking,
+  JobDifficulty,
+  HeatmapData,
+  HeatmapCell,
+  RetryAnalysisEntry,
 } from './types';
 
 const CATEGORIES: CategoryDefinition[] = [
@@ -65,6 +70,9 @@ function buildModelSummary(modelKey: string, rows: BenchmarkRow[]): ModelSummary
     avgOutputTokens: Math.round(rows.reduce((s, r) => s + r.outputTokens, 0) / rows.length),
     avgTotalTokens: Math.round(rows.reduce((s, r) => s + r.totalTokens, 0) / rows.length),
     hasEstimatedTokens: rows.some((r) => r.tokensSource === 'estimated'),
+    costPerSuccess: passedCount > 0
+      ? rows.reduce((s, r) => s + r.costUsd, 0) / passedCount
+      : Infinity,
   };
 }
 
@@ -85,8 +93,106 @@ function buildSummaries(rows: BenchmarkRow[]): ModelSummary[] {
   );
 }
 
+function computeMedianCost(summaries: ModelSummary[]): number {
+  const paidCosts = summaries
+    .filter((m) => m.avgCostUsd > 0)
+    .map((m) => m.avgCostUsd)
+    .sort((a, b) => a - b);
+  if (paidCosts.length === 0) return 0;
+  if (paidCosts.length % 2 === 0) {
+    return (paidCosts[paidCosts.length / 2 - 1] + paidCosts[paidCosts.length / 2]) / 2;
+  }
+  return paidCosts[Math.floor(paidCosts.length / 2)];
+}
+
+function buildJobDifficulty(validRows: BenchmarkRow[]): JobDifficulty[] {
+  const jobGroups = new Map<string, BenchmarkRow[]>();
+  for (const row of validRows) {
+    if (!jobGroups.has(row.jobId)) jobGroups.set(row.jobId, []);
+    jobGroups.get(row.jobId)!.push(row);
+  }
+
+  return Array.from(jobGroups.entries())
+    .map(([jobId, rows]) => {
+      const passedCount = rows.filter((r) => r.passed).length;
+      const modelGroups = groupByModel(rows);
+      const failedModelCount = Array.from(modelGroups.values()).filter(
+        (modelRows) => !modelRows.some((r) => r.passed)
+      ).length;
+
+      return {
+        jobId,
+        jobName: rows[0].jobName,
+        totalRuns: rows.length,
+        passRate: rows.length > 0 ? passedCount / rows.length : 0,
+        avgScore: rows.reduce((s, r) => s + r.qualityScore, 0) / rows.length,
+        failedModels: failedModelCount,
+        totalModels: modelGroups.size,
+      };
+    })
+    .sort((a, b) => a.passRate - b.passRate || a.avgScore - b.avgScore);
+}
+
+function buildHeatmapData(validRows: BenchmarkRow[], overallRanking: ModelSummary[]): HeatmapData {
+  const jobs = [...new Set(validRows.map((r) => r.jobId))].sort();
+  const models = overallRanking.slice(0, 15).map((m) => m.displayName);
+
+  const cells: HeatmapCell[][] = models.map((modelName) => {
+    return jobs.map((jobId) => {
+      const matchingRows = validRows.filter(
+        (r) => r.modelDisplayName === modelName && r.jobId === jobId
+      );
+      const avgScore = matchingRows.length > 0
+        ? matchingRows.reduce((s, r) => s + r.qualityScore, 0) / matchingRows.length
+        : -1;
+      const passed = matchingRows.length > 0 && matchingRows.some((r) => r.passed);
+
+      return { modelDisplayName: modelName, jobId, avgScore, passed };
+    });
+  });
+
+  return { models, jobs, cells };
+}
+
+function buildRetryAnalysis(validRows: BenchmarkRow[], summaries: ModelSummary[]): RetryAnalysisEntry[] {
+  const retryRows = validRows.filter((r) => r.turns > 1);
+  if (retryRows.length === 0) return [];
+
+  const modelGroups = groupByModel(retryRows);
+  const entries: RetryAnalysisEntry[] = [];
+
+  for (const [key, rows] of modelGroups) {
+    const summary = summaries.find(
+      (m) => `${m.modelId}::${m.executionMode}` === key
+    );
+    if (!summary) continue;
+
+    const avgTurnsUsed = rows.reduce((s, r) => s + r.turns, 0) / rows.length;
+    const firstTurnPassed = rows.filter((r) => r.passedOnTurn === 1).length;
+    const finalPassed = rows.filter((r) => r.passed).length;
+    const passRateFirstTurn = rows.length > 0 ? firstTurnPassed / rows.length : 0;
+    const passRateFinal = rows.length > 0 ? finalPassed / rows.length : 0;
+
+    entries.push({
+      model: summary,
+      avgTurnsUsed: +avgTurnsUsed.toFixed(1),
+      passRateFirstTurn,
+      passRateFinal,
+      retryBenefit: passRateFinal - passRateFirstTurn,
+    });
+  }
+
+  return entries.sort((a, b) => b.retryBenefit - a.retryBenefit);
+}
+
 export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResult {
-  const summaries = buildSummaries(rows);
+  // Filter out error rows (infrastructure failures)
+  const allRows = rows;
+  const validRows = rows.filter((r) => !r.errorMessage || r.errorMessage.trim() === '');
+  const errorCount = allRows.length - validRows.length;
+
+  // Build summaries from valid rows only
+  const summaries = buildSummaries(validRows);
 
   // Overall ranking by pass rate desc, then avg quality score desc
   const overallRanking = [...summaries].sort((a, b) =>
@@ -107,10 +213,20 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
       return b.costEfficiency - a.costEfficiency;
     });
 
+  // Score vs Cost
+  const scoreVsCost: ScoreVsCostEntry[] = summaries
+    .map((m) => ({
+      model: m,
+      isZeroCost: m.avgCostUsd === 0,
+    }))
+    .sort((a, b) => b.model.avgQualityScore - a.model.avgQualityScore);
+
+  const medianCostUsd = computeMedianCost(summaries);
+
   // Language rankings
-  const languages = [...new Set(rows.map((r) => r.language))].sort();
+  const languages = [...new Set(validRows.map((r) => r.language))].sort();
   const languageRankings: LanguageRanking[] = languages.map((lang) => {
-    const langRows = rows.filter((r) => r.language === lang);
+    const langRows = validRows.filter((r) => r.language === lang);
     const langSummaries = buildSummaries(langRows);
     return {
       language: lang,
@@ -133,7 +249,7 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
     });
 
   // API-only ranking
-  const apiRows = rows.filter((r) => r.executionMode === 'api');
+  const apiRows = validRows.filter((r) => r.executionMode === 'api');
   const apiOnlyRanking = buildSummaries(apiRows).sort((a, b) =>
     b.passRate - a.passRate || b.avgQualityScore - a.avgQualityScore
   );
@@ -145,7 +261,7 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
 
   // Category rankings
   const categoryRankings: CategoryRanking[] = CATEGORIES.map((cat) => {
-    const catRows = rows.filter((r) => cat.jobIds.includes(r.jobId));
+    const catRows = validRows.filter((r) => cat.jobIds.includes(r.jobId));
     const catSummaries = buildSummaries(catRows);
     return {
       category: cat,
@@ -155,22 +271,38 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
     };
   }).filter((cr) => cr.models.length > 0);
 
-  const uniqueJobs = new Set(rows.map((r) => r.jobId));
+  // Job difficulty
+  const jobDifficulty = buildJobDifficulty(validRows);
+
+  // Heatmap
+  const heatmapData = buildHeatmapData(validRows, overallRanking);
+
+  // Retry analysis
+  const retryAnalysis = buildRetryAnalysis(validRows, summaries);
+
+  const uniqueJobs = new Set(validRows.map((r) => r.jobId));
 
   return {
-    rows,
+    rows: validRows,
     totalModels: summaries.length,
     totalJobs: uniqueJobs.size,
-    totalRuns: rows.length,
+    totalRuns: validRows.length,
+    totalErrors: errorCount,
+    totalRunsIncludingErrors: allRows.length,
     sourceFile,
     generatedAt: new Date().toISOString(),
     overallRanking,
     costEfficiency,
     languageRankings,
     speedAccuracy,
+    scoreVsCost,
+    medianCostUsd,
     apiOnlyRanking,
     tokenAnalysis,
     categoryRankings,
+    jobDifficulty,
+    heatmapData,
+    retryAnalysis,
   };
 }
 

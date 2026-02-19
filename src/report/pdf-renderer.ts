@@ -4,9 +4,6 @@ import {
   AnalysisResult,
   ChartBuffers,
   Locale,
-  ModelSummary,
-  CostEfficiencyEntry,
-  SpeedAccuracyEntry,
 } from './types';
 import { tr } from './i18n';
 
@@ -29,11 +26,17 @@ interface TocEntry {
   page: number;
 }
 
+export interface NarrativeContent {
+  introduction: string;
+  conclusion: string;
+}
+
 export async function renderPDF(
   analysis: AnalysisResult,
   charts: ChartBuffers,
   locale: Locale,
   outputPath: string,
+  narrative?: NarrativeContent,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -87,6 +90,13 @@ export async function renderPDF(
       }
     }
 
+    // Helper: start a new page only if we're not already at the top of one
+    function newPage(): void {
+      if (doc.y > MARGIN + 20) {
+        doc.addPage();
+      }
+    }
+
     // Helper: draw a data table
     function drawTable(
       headers: string[],
@@ -96,8 +106,13 @@ export async function renderPDF(
       const totalWidth = colWidths.reduce((a, b) => a + b, 0);
       const startX = MARGIN;
 
+      // Ensure at least header + min(5, total) rows fit on current page
+      // to avoid orphaned table headers at page bottom
+      const minRowsToShow = Math.min(5, rows.length);
+      const minTableHeight = TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * minRowsToShow;
+      ensureSpace(minTableHeight);
+
       // Header
-      ensureSpace(TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT);
       let x = startX;
       const headerY = doc.y;
       doc.rect(startX, headerY, totalWidth, TABLE_HEADER_HEIGHT).fill('#4A90D9');
@@ -142,6 +157,28 @@ export async function renderPDF(
       }
     }
 
+    // Helper: interpolate color from red (0) → yellow (2.5) → green (5)
+    // Returns hex color string compatible with PDFKit
+    function scoreToColor(score: number): string {
+      if (score < 0) return '#E0E0E0'; // no data
+      const clamped = Math.max(0, Math.min(5, score));
+      let r: number, g: number, b: number;
+      if (clamped <= 2.5) {
+        // Red → Yellow
+        const t = clamped / 2.5;
+        r = Math.round(220 * (1 - t) + 240 * t);
+        g = Math.round(80 * (1 - t) + 200 * t);
+        b = Math.round(80 * (1 - t) + 80 * t);
+      } else {
+        // Yellow → Green
+        const t = (clamped - 2.5) / 2.5;
+        r = Math.round(240 * (1 - t) + 80 * t);
+        g = Math.round(200 * (1 - t) + 180 * t);
+        b = Math.round(80 * (1 - t) + 80 * t);
+      }
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    }
+
     // ─── 1. Cover Page ───────────────────────────────────────────────────────
     doc.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT).fill('#1A1A2E');
     doc.fontSize(FONT_SIZE_TITLE + 8).font('Helvetica-Bold').fillColor('#FFFFFF');
@@ -162,8 +199,11 @@ export async function renderPDF(
     const stats = [
       `${tr('cover.models', locale)}: ${analysis.totalModels}`,
       `${tr('cover.jobs', locale)}: ${analysis.totalJobs}`,
-      `${tr('cover.runs', locale)}: ${analysis.totalRuns}`,
+      `${tr('cover.validRuns', locale)}: ${analysis.totalRuns}`,
     ];
+    if (analysis.totalErrors > 0) {
+      stats.push(`${tr('cover.errorRuns', locale)}: ${analysis.totalErrors}`);
+    }
     for (const stat of stats) {
       doc.text(stat, MARGIN, doc.y, { width: CONTENT_WIDTH, align: 'center' });
       doc.moveDown(0.3);
@@ -176,6 +216,17 @@ export async function renderPDF(
     doc.text(tr('toc.title', locale), MARGIN, MARGIN, { width: CONTENT_WIDTH });
     doc.moveDown(1);
     // TOC content will be rendered after all sections using buffered pages
+
+    // ─── Introduction (AI-generated) ─────────────────────────────────────
+    if (narrative?.introduction) {
+      doc.addPage();
+      sectionHeader(tr('section.introduction', locale));
+      doc.fontSize(FONT_SIZE_BODY).font('Helvetica').fillColor('#333333');
+      doc.text(narrative.introduction, MARGIN, doc.y, {
+        width: CONTENT_WIDTH,
+        lineGap: 3,
+      });
+    }
 
     // ─── 3. Executive Overview ───────────────────────────────────────────
     doc.addPage();
@@ -203,7 +254,7 @@ export async function renderPDF(
     drawTable(overviewHeaders, overviewRows, [30, 120, 80, 35, 60, 55, 60]);
 
     // ─── 4. Cost Efficiency ──────────────────────────────────────────────
-    doc.addPage();
+    newPage();
     sectionHeader(tr('section.costEfficiency', locale), tr('section.costEfficiency.desc', locale));
 
     doc.fontSize(FONT_SIZE_BODY).font('Helvetica-Oblique').fillColor('#666666');
@@ -257,12 +308,97 @@ export async function renderPDF(
     ]);
     drawTable(ceHeaders, ceRows, [30, 150, 70, 80, 100]);
 
-    // ─── 5. Best per Language ────────────────────────────────────────────
-    doc.addPage();
+    // ─── Cost per Resolved Task ────────────────────────────────────────
+    newPage();
+    sectionHeader(tr('section.costPerSuccess', locale), tr('section.costPerSuccess.desc', locale));
+    embedChart(charts.costPerSuccessBar);
+
+    const cpsModels = analysis.overallRanking
+      .filter((m) => m.passedRuns > 0 && Number.isFinite(m.costPerSuccess))
+      .sort((a, b) => a.costPerSuccess - b.costPerSuccess);
+
+    if (cpsModels.length > 0) {
+      const cpsHeaders = [
+        tr('table.rank', locale),
+        tr('table.model', locale),
+        tr('table.provider', locale),
+        tr('table.costPerSuccess', locale),
+        tr('table.passRate', locale),
+        tr('table.passedRuns', locale),
+        tr('table.totalCost', locale),
+      ];
+      const cpsRows = cpsModels.map((m, i) => [
+        String(i + 1),
+        m.displayName,
+        m.provider,
+        `$${m.costPerSuccess.toFixed(4)}`,
+        `${(m.passRate * 100).toFixed(1)}%`,
+        `${m.passedRuns}/${m.totalRuns}`,
+        `$${m.totalCostUsd.toFixed(2)}`,
+      ]);
+      drawTable(cpsHeaders, cpsRows, [30, 120, 70, 70, 55, 55, 60]);
+    }
+
+    // ─── 5. Quality vs Cost Analysis ─────────────────────────────────────
+    newPage();
+    sectionHeader(tr('section.scoreVsCost', locale), tr('section.scoreVsCost.desc', locale));
+
+    if (analysis.scoreVsCost.some((e) => e.isZeroCost)) {
+      doc.fontSize(FONT_SIZE_TABLE).font('Helvetica-Oblique').fillColor('#888888');
+      doc.text(tr('scoreVsCost.zeroCostNote', locale), MARGIN, doc.y, { width: CONTENT_WIDTH });
+      doc.moveDown(0.5);
+      doc.font('Helvetica').fillColor('#000000');
+    }
+
+    embedChart(charts.scoreVsCostScatter);
+
+    // Best quadrant: high quality (>= 3.0) AND below median cost
+    const paidModels = analysis.scoreVsCost.filter((e) => !e.isZeroCost);
+    const bestQuadrantModels = paidModels.filter(
+      (e) => e.model.avgQualityScore >= 3.0 && e.model.avgCostUsd <= analysis.medianCostUsd
+    );
+    const zeroCostGoodModels = analysis.scoreVsCost.filter(
+      (e) => e.isZeroCost && e.model.avgQualityScore >= 3.0
+    );
+
+    ensureSpace(80);
+    doc.fontSize(FONT_SIZE_H2).font('Helvetica-Bold').fillColor('#4A90D9');
+    doc.text(tr('scoreVsCost.bestQuadrant', locale), MARGIN, doc.y, { width: CONTENT_WIDTH });
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fillColor('#000000');
+
+    const bestValueModels = [...zeroCostGoodModels, ...bestQuadrantModels];
+    if (bestValueModels.length === 0) {
+      doc.fontSize(FONT_SIZE_BODY).text(tr('scoreVsCost.noBestQuadrant', locale), MARGIN, doc.y, { width: CONTENT_WIDTH });
+    } else {
+      const bqHeaders = [
+        tr('table.rank', locale),
+        tr('table.model', locale),
+        tr('table.provider', locale),
+        tr('table.avgScore', locale),
+        tr('table.avgCost', locale),
+        tr('table.passRate', locale),
+      ];
+      const bqRows = bestValueModels
+        .sort((a, b) => b.model.avgQualityScore - a.model.avgQualityScore)
+        .map((e, i) => [
+          String(i + 1),
+          e.model.displayName,
+          e.model.provider,
+          `${e.model.avgQualityScore.toFixed(1)}/5`,
+          e.isZeroCost ? '$0.00*' : `$${e.model.avgCostUsd.toFixed(4)}`,
+          `${(e.model.passRate * 100).toFixed(1)}%`,
+        ]);
+      drawTable(bqHeaders, bqRows, [30, 140, 80, 65, 70, 70]);
+    }
+
+    // ─── 6. Best per Language ────────────────────────────────────────────
+    newPage();
     sectionHeader(tr('section.perLanguage', locale), tr('section.perLanguage.desc', locale));
 
     for (const lr of analysis.languageRankings) {
-      ensureSpace(60);
+      // Ensure sub-header + at least header + 3 table rows fit
+      ensureSpace(30 + TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * 3);
       doc.fontSize(FONT_SIZE_H2).font('Helvetica-Bold').fillColor('#4A90D9');
       doc.text(lr.language.toUpperCase(), MARGIN, doc.y, { width: CONTENT_WIDTH });
       doc.moveDown(0.3);
@@ -288,8 +424,8 @@ export async function renderPDF(
       doc.moveDown(0.5);
     }
 
-    // ─── 6. Fastest with Good Accuracy ───────────────────────────────────
-    doc.addPage();
+    // ─── 7. Fastest with Good Accuracy ───────────────────────────────────
+    newPage();
     sectionHeader(tr('section.speedAccuracy', locale), tr('section.speedAccuracy.desc', locale));
 
     doc.fontSize(FONT_SIZE_BODY).font('Helvetica-Oblique').fillColor('#666666');
@@ -322,9 +458,9 @@ export async function renderPDF(
       drawTable(saHeaders, saRows, [30, 140, 65, 80, 80, 70]);
     }
 
-    // ─── 7. API-Only Ranking ─────────────────────────────────────────────
+    // ─── 8. API-Only Ranking ─────────────────────────────────────────────
     if (analysis.apiOnlyRanking.length > 0) {
-      doc.addPage();
+      newPage();
       sectionHeader(tr('section.apiOnly', locale), tr('section.apiOnly.desc', locale));
 
       const apiHeaders = [
@@ -348,8 +484,8 @@ export async function renderPDF(
       drawTable(apiHeaders, apiRows, [30, 120, 75, 60, 55, 65, 70]);
     }
 
-    // ─── 8. Token Analysis ───────────────────────────────────────────────
-    doc.addPage();
+    // ─── 9. Token Analysis ───────────────────────────────────────────────
+    newPage();
     sectionHeader(tr('section.tokens', locale), tr('section.tokens.desc', locale));
     embedChart(charts.tokenStackedBar);
 
@@ -369,13 +505,14 @@ export async function renderPDF(
     ]);
     drawTable(tokHeaders, tokRows, [30, 160, 100, 100, 100]);
 
-    // ─── 9. Category Analysis ────────────────────────────────────────────
-    doc.addPage();
+    // ─── 10. Category Analysis ────────────────────────────────────────────
+    newPage();
     sectionHeader(tr('section.categories', locale), tr('section.categories.desc', locale));
     embedChart(charts.categoryGroupedBar);
 
     for (const cr of analysis.categoryRankings) {
-      ensureSpace(80);
+      // Ensure category sub-header + description + table header + 3 rows fit
+      ensureSpace(50 + TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * 3);
       const catKey = `category.${cr.category.id}`;
       const catName = tr(catKey, locale) !== catKey ? tr(catKey, locale) : cr.category.name;
       const catDesc = tr(`${catKey}.desc`, locale);
@@ -406,8 +543,168 @@ export async function renderPDF(
       doc.moveDown(0.5);
     }
 
-    // ─── 10. Task Coverage ──────────────────────────────────────────────
-    doc.addPage();
+    // ─── 11. Task Difficulty ──────────────────────────────────────────────
+    if (analysis.jobDifficulty.length > 0) {
+      newPage();
+      sectionHeader(tr('section.difficulty', locale), tr('section.difficulty.desc', locale));
+      embedChart(charts.difficultyBar);
+
+      const diffHeaders = [
+        tr('table.rank', locale),
+        tr('table.id', locale),
+        tr('table.name', locale),
+        tr('table.failRate', locale),
+        tr('table.avgScore', locale),
+        tr('table.failedModels', locale),
+      ];
+      const diffRows = analysis.jobDifficulty.map((j, i) => [
+        String(i + 1),
+        j.jobId,
+        j.jobName,
+        `${((1 - j.passRate) * 100).toFixed(1)}%`,
+        `${j.avgScore.toFixed(1)}/5`,
+        `${j.failedModels}/${j.totalModels}`,
+      ]);
+      drawTable(diffHeaders, diffRows, [30, 30, 160, 65, 65, 80]);
+    }
+
+    // ─── 12. Model × Task Heatmap ────────────────────────────────────────
+    if (analysis.heatmapData.models.length > 0 && analysis.heatmapData.jobs.length > 0) {
+      newPage();
+      sectionHeader(tr('section.heatmap', locale), tr('section.heatmap.desc', locale));
+
+      const heatmap = analysis.heatmapData;
+      const jobCount = heatmap.jobs.length;
+      const modelCount = heatmap.models.length;
+
+      // Layout: model label column + job columns
+      const modelLabelWidth = 120;
+      const availableWidth = CONTENT_WIDTH - modelLabelWidth;
+      const cellWidth = Math.min(Math.floor(availableWidth / jobCount), 18);
+      const cellHeight = 16;
+      const headerHeight = 40; // rotated job headers
+
+      // Draw job headers (rotated text)
+      ensureSpace(headerHeight + cellHeight * modelCount + 20);
+      const startX = MARGIN + modelLabelWidth;
+      const startY = doc.y + headerHeight;
+
+      doc.fontSize(6).font('Helvetica-Bold').fillColor('#333333');
+      for (let j = 0; j < jobCount; j++) {
+        const x = startX + j * cellWidth + cellWidth / 2;
+        doc.save();
+        doc.translate(x, startY - 4);
+        doc.rotate(-60, { origin: [0, 0] });
+        doc.text(heatmap.jobs[j], 0, 0, { width: 40, height: 10 });
+        doc.restore();
+      }
+
+      // Draw rows
+      for (let m = 0; m < modelCount; m++) {
+        const rowY = startY + m * cellHeight;
+
+        if (rowY + cellHeight > PAGE_HEIGHT - MARGIN - 30) {
+          doc.addPage();
+          doc.y = MARGIN;
+          // We don't re-draw headers on continuation page for simplicity
+        }
+
+        // Model label
+        doc.fontSize(7).font('Helvetica').fillColor('#333333');
+        doc.text(heatmap.models[m], MARGIN, rowY + 3, {
+          width: modelLabelWidth - 5,
+          height: cellHeight,
+          ellipsis: true,
+        });
+
+        // Score cells
+        for (let j = 0; j < jobCount; j++) {
+          const cell = heatmap.cells[m][j];
+          const cx = startX + j * cellWidth;
+          const color = scoreToColor(cell.avgScore);
+
+          doc.rect(cx, rowY, cellWidth, cellHeight).fill(color);
+
+          if (cell.avgScore >= 0) {
+            // Dark text on light background, light text on dark background
+            const textColor = cell.avgScore >= 2 && cell.avgScore <= 4 ? '#333333' : '#FFFFFF';
+            doc.fontSize(5.5).font('Helvetica').fillColor(textColor);
+            doc.text(
+              cell.avgScore.toFixed(1),
+              cx + 1, rowY + 4,
+              { width: cellWidth - 2, height: cellHeight, align: 'center' }
+            );
+          } else {
+            doc.fontSize(5.5).font('Helvetica').fillColor('#999999');
+            doc.text('-', cx + 1, rowY + 4, { width: cellWidth - 2, height: cellHeight, align: 'center' });
+          }
+        }
+      }
+
+      doc.y = startY + modelCount * cellHeight + 10;
+
+      // Legend
+      ensureSpace(30);
+      const legendY = doc.y;
+      const legendColors = [
+        { score: 0, label: '0' },
+        { score: 1.25, label: '' },
+        { score: 2.5, label: '2.5' },
+        { score: 3.75, label: '' },
+        { score: 5, label: '5' },
+      ];
+      const legendCellW = 30;
+      const legendStartX = MARGIN + modelLabelWidth;
+      doc.fontSize(7).font('Helvetica').fillColor('#666666');
+      doc.text(locale === 'pt-br' ? 'Legenda:' : 'Legend:', MARGIN, legendY + 3, { width: modelLabelWidth - 5 });
+      for (let i = 0; i < legendColors.length; i++) {
+        const lx = legendStartX + i * legendCellW;
+        doc.rect(lx, legendY, legendCellW, 14).fill(scoreToColor(legendColors[i].score));
+        if (legendColors[i].label) {
+          doc.fontSize(6).font('Helvetica').fillColor('#333333');
+          doc.text(legendColors[i].label, lx, legendY + 3, { width: legendCellW, align: 'center' });
+        }
+      }
+      doc.y = legendY + 20;
+    }
+
+    // ─── 13. Retry Analysis ──────────────────────────────────────────────
+    if (analysis.retryAnalysis.length > 0) {
+      newPage();
+      sectionHeader(tr('section.retry', locale), tr('section.retry.desc', locale));
+
+      const retryHeaders = [
+        tr('table.rank', locale),
+        tr('table.model', locale),
+        tr('table.avgTurns', locale),
+        tr('table.firstTurnPass', locale),
+        tr('table.finalPass', locale),
+        tr('table.retryBenefit', locale),
+      ];
+      const retryRows = analysis.retryAnalysis.map((e, i) => [
+        String(i + 1),
+        e.model.displayName,
+        String(e.avgTurnsUsed),
+        `${(e.passRateFirstTurn * 100).toFixed(1)}%`,
+        `${(e.passRateFinal * 100).toFixed(1)}%`,
+        `+${(e.retryBenefit * 100).toFixed(1)}%`,
+      ]);
+      drawTable(retryHeaders, retryRows, [30, 140, 65, 80, 70, 80]);
+    }
+
+    // ─── Conclusion (AI-generated) ─────────────────────────────────────
+    if (narrative?.conclusion) {
+      newPage();
+      sectionHeader(tr('section.conclusion', locale));
+      doc.fontSize(FONT_SIZE_BODY).font('Helvetica').fillColor('#333333');
+      doc.text(narrative.conclusion, MARGIN, doc.y, {
+        width: CONTENT_WIDTH,
+        lineGap: 3,
+      });
+    }
+
+    // ─── 14. Task Coverage ───────────────────────────────────────────────
+    newPage();
     sectionHeader(tr('section.taskCoverage', locale), tr('section.taskCoverage.desc', locale));
 
     // Job list table
@@ -447,8 +744,8 @@ export async function renderPDF(
     ];
     drawTable(jobListHeaders, allJobs, [30, 110, 75, 280]);
 
-    // Coverage map table
-    ensureSpace(60);
+    // Coverage map table — start on new page
+    newPage();
     doc.fontSize(FONT_SIZE_H2).font('Helvetica-Bold').fillColor('#4A90D9');
     doc.text(locale === 'pt-br' ? 'Mapa de Cobertura' : 'Coverage Map', MARGIN, doc.y, { width: CONTENT_WIDTH });
     doc.moveDown(0.3);
@@ -473,8 +770,8 @@ export async function renderPDF(
     ];
     drawTable(coverageHeaders, coverageRows, [80, 60, 120, 110, 125]);
 
-    // ─── 11. Methodology ─────────────────────────────────────────────────
-    doc.addPage();
+    // ─── 15. Methodology ─────────────────────────────────────────────────
+    newPage();
     sectionHeader(tr('section.methodology', locale));
     doc.fontSize(FONT_SIZE_BODY).font('Helvetica').fillColor('#333333');
     doc.text(tr('methodology.text', locale), MARGIN, doc.y, {

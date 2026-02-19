@@ -50,9 +50,13 @@ export class FullstackCLIExecutor implements Executor {
       promptFile = await writeTempFile(request.prompt);
       const timeoutMs = this.agent.agenticTimeoutMs ?? 300_000;
 
+      const args = this.agent.buildAgenticArgs!(promptFile, request);
+      // Append prompt as positional argument for agents that use it (e.g. Claude Code)
+      args.push(request.prompt);
+
       const { stdout, stderr } = await spawnWithTimeout(
         this.agent.binary,
-        this.agent.buildAgenticArgs!(promptFile, request),
+        args,
         this.agent.env,
         timeoutMs,
         projectDir, // cwd = project directory
@@ -90,7 +94,7 @@ export class FullstackCLIExecutor implements Executor {
       os.tmpdir(),
       `llm-bench-project-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
-    execSync(`cp -r "${sourceDir}" "${tmpDir}"`);
+    execSync(`cp -a "${sourceDir}" "${tmpDir}"`);
     return tmpDir;
   }
 

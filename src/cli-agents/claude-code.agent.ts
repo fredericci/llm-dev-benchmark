@@ -19,21 +19,21 @@ export class ClaudeCodeAgent implements CLIAgent {
   agenticTimeoutMs = 300_000;
 
   buildArgs(promptFile: string, _request: ExecutionRequest): string[] {
+    // Prompt is appended as positional argument by the executor
     return [
-      '--print',                    // non-interactive mode
-      '--output-format', 'json',    // structured output for usage metadata extraction
-      '--message', `@${promptFile}`, // read prompt from temp file
+      '--print',
+      '--output-format', 'json',
     ];
   }
 
   buildAgenticArgs(promptFile: string, _request: ExecutionRequest): string[] {
+    // Prompt is appended as positional argument by the executor
     return [
       '--print',
       '--dangerously-skip-permissions',
       '--output-format', 'json',
       '--max-turns', '50',
       '--no-session-persistence',
-      '--message', `@${promptFile}`,
     ];
   }
 
