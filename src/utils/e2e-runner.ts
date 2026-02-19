@@ -159,12 +159,14 @@ export async function runE2ETests(
     const e2eDir = path.join(projectDir, 'e2e');
 
     // 1. npm install in backend and frontend
+    // Force NODE_ENV=development so devDependencies (vite, typescript) are installed
+    const installEnv = { ...process.env, NODE_ENV: 'development' };
     for (const dir of [backendDir, frontendDir]) {
       const installResult = spawnSync('npm', ['install', '--silent'], {
         cwd: dir,
         timeout: NPM_INSTALL_TIMEOUT_MS,
         encoding: 'utf-8',
-        env: { ...process.env },
+        env: installEnv,
       });
       if (installResult.status !== 0 && installResult.status !== null) {
         console.log(`  npm install warning in ${path.basename(dir)}: ${installResult.stderr?.slice(0, 200)}`);

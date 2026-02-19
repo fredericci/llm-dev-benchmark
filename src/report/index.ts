@@ -5,6 +5,7 @@ import { parseBenchmarkCSV } from './csv-parser';
 import { analyze } from './analyzer';
 import { renderAllCharts } from './chart-renderer';
 import { renderPDF } from './pdf-renderer';
+import { generateReportNarrative } from '../utils/report-narrator';
 
 export interface ReportOptions {
   inputFile: string;
@@ -32,12 +33,18 @@ export async function generateReport(options: ReportOptions): Promise<string[]> 
 
   console.log('Analyzing data...');
   const analysis = analyze(rows, inputFile);
-  console.log(`  ${analysis.totalModels} models, ${analysis.totalJobs} jobs, ${analysis.totalRuns} runs`);
+  console.log(`  ${analysis.totalModels} models, ${analysis.totalJobs} jobs, ${analysis.totalRuns} valid runs`);
+  if (analysis.totalErrors > 0) {
+    console.log(`  ${analysis.totalErrors} error rows filtered out`);
+  }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', '_').slice(0, 15);
   const outputFiles: string[] = [];
 
   for (const locale of locales) {
+    console.log(`Generating narrative (${locale})...`);
+    const narrative = await generateReportNarrative(analysis, locale);
+
     console.log(`Rendering charts (${locale})...`);
     const charts = await renderAllCharts(analysis, locale);
 
@@ -45,7 +52,7 @@ export async function generateReport(options: ReportOptions): Promise<string[]> 
     const outputPath = path.join(outputDir, filename);
 
     console.log(`Generating PDF (${locale}): ${outputPath}`);
-    await renderPDF(analysis, charts, locale, outputPath);
+    await renderPDF(analysis, charts, locale, outputPath, narrative);
 
     outputFiles.push(outputPath);
     console.log(`  Done: ${outputPath}`);

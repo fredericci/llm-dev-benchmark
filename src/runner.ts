@@ -267,9 +267,10 @@ export class Runner {
           // Fullstack: run agent in project directory
           if (turn === 1) {
             // First turn: copy project and run agent
-            const baseProjectDir = path.join(
-              process.cwd(), 'fixtures', (job as FullstackJob).baseProjectPath,
-            );
+            // Use BASE_PROJECT_DIR env (Docker, has node_modules pre-installed)
+            // or fall back to fixtures/ relative path (local dev)
+            const baseProjectDir = process.env.BASE_PROJECT_DIR
+              || path.join(process.cwd(), 'fixtures', (job as FullstackJob).baseProjectPath);
             execResult = await withRetry(() =>
               fullstackExecutor.execute({
                 prompt: currentPrompt,
