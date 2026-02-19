@@ -14,11 +14,26 @@ export class ClaudeCodeAgent implements CLIAgent {
   timeoutMs = 120_000;
   env: Record<string, string> = {};
 
+  // ─── Agentic mode ─────────────────────────────────────────
+  supportsAgenticMode = true;
+  agenticTimeoutMs = 300_000;
+
   buildArgs(promptFile: string, _request: ExecutionRequest): string[] {
     return [
       '--print',                    // non-interactive mode
       '--output-format', 'json',    // structured output for usage metadata extraction
       '--message', `@${promptFile}`, // read prompt from temp file
+    ];
+  }
+
+  buildAgenticArgs(promptFile: string, _request: ExecutionRequest): string[] {
+    return [
+      '--print',
+      '--dangerously-skip-permissions',
+      '--output-format', 'json',
+      '--max-turns', '50',
+      '--no-session-persistence',
+      '--message', `@${promptFile}`,
     ];
   }
 

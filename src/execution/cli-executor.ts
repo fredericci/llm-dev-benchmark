@@ -6,29 +6,31 @@ import { CLIAgent } from '../cli-agents/base.agent';
 import { estimateTokens } from '../utils/token-estimator';
 import { Executor, ExecutionRequest, ExecutionResult } from './base.executor';
 
-interface SpawnResult {
+export interface SpawnResult {
   stdout: string;
   stderr: string;
   exitCode: number;
 }
 
-async function writeTempFile(content: string): Promise<string> {
+export async function writeTempFile(content: string): Promise<string> {
   const tmpDir = os.tmpdir();
   const tmpFile = path.join(tmpDir, `llm-bench-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
   await fs.promises.writeFile(tmpFile, content, 'utf-8');
   return tmpFile;
 }
 
-function spawnWithTimeout(
+export function spawnWithTimeout(
   binary: string,
   args: string[],
   env: Record<string, string>,
   timeoutMs: number,
+  cwd?: string,
 ): Promise<SpawnResult> {
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, args, {
       env: { ...process.env, ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...(cwd ? { cwd } : {}),
     });
 
     let stdout = '';

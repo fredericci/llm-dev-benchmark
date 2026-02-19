@@ -30,6 +30,12 @@ import j22 from './j22-debounce-search';
 import j23 from './j23-multistep-form';
 import j24 from './j24-optimistic-update';
 import j25 from './j25-async-state';
+import j26 from './j26-login-page';
+import j27 from './j27-avatar-menu';
+import j28 from './j28-dark-mode';
+import j29 from './j29-data-table';
+import j30 from './j30-toast-notifications';
+import j31 from './j31-form-validation';
 
 const ALL_JOBS: Job[] = [
   j01, j02, j03, j04, j05,
@@ -37,6 +43,7 @@ const ALL_JOBS: Job[] = [
   j11, j12, j13, j14, j15,
   j16, j17, j18, j19, j20,
   j21, j22, j23, j24, j25,
+  j26, j27, j28, j29, j30, j31,
 ];
 
 const JOB_MAP = new Map<string, Job>(ALL_JOBS.map((j) => [j.id, j]));

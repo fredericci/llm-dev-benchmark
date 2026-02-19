@@ -1,0 +1,7 @@
+{
+  "name": "fullstack-e2e",
+  "private": true,
+  "dependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

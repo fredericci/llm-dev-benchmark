@@ -24,6 +24,23 @@ npm run docker:build   # docker build -t llm-dev-bench .
 npm run docker:bench   # run benchmarks in parallel Docker containers
 npm run docker:merge   # merge results from multiple container runs
 
+# Docker — Fullstack benchmark (CLI agents + Playwright)
+npm run docker:build:fullstack   # build fullstack image with Playwright + Chromium
+npm run docker:bench:fullstack   # run fullstack benchmarks (j26-j31) in parallel
+
+# Run fullstack benchmark locally (requires CLI agents installed)
+npx ts-node -r tsconfig-paths/register src/cli.ts run \
+  --mode cli --agents claude-code --jobs j26 \
+  --runs 1 --max-iterations 3
+
+# Run specific fullstack job in Docker
+docker run --rm --env-file .env \
+  -e CLI_AGENT_TIMEOUT_MS=300000 \
+  -v $(pwd)/results/fullstack:/app/results \
+  llm-fullstack-bench \
+  node /app/bench/dist/cli.js run \
+    --mode cli --agents claude-code --jobs j26 --runs 1 --max-iterations 3
+
 # Run a quick single benchmark (fastest validation)
 npx ts-node -r tsconfig-paths/register src/cli.ts run \
   --mode api --jobs j01 --models claude-haiku-4-5 \
@@ -64,7 +81,7 @@ npx ts-node -r tsconfig-paths/register src/cli.ts report \
 
 ## Architecture
 
-The project is a cost-efficiency benchmark that measures LLM performance on 25 real software engineering tasks. Both execution modes produce identical CSV output for direct comparability.
+The project is a cost-efficiency benchmark that measures LLM performance on 31 real software engineering tasks (j01-j25: isolated tasks, j26-j31: fullstack tasks). Both execution modes produce identical CSV output for direct comparability.
 
 ### Execution Modes
 
@@ -91,15 +108,17 @@ cli.ts summarize  → prints summary table from existing CSV
 
 ### Key Directories
 
-- `src/jobs/` — 25 benchmark jobs (j01–j25) plus a registry; each job is self-contained
-- `src/execution/` — `APIExecutor` and `CLIExecutor` share the same interface
+- `src/jobs/` — 31 benchmark jobs (j01–j25 isolated, j26–j31 fullstack) plus a registry
+- `src/execution/` — `APIExecutor`, `CLIExecutor`, and `FullstackCLIExecutor`
 - `src/adapters/` — thin SDK wrappers per provider (Anthropic, Anthropic Vertex, OpenAI, OpenAI Responses, Google)
 - `src/cli-agents/` — CLI agent wrappers (claude-code, gemini-cli, codex-cli)
-- `src/utils/` — `code-runner.ts`, `rubric-scorer.ts`, `token-estimator.ts`, `cost-calculator.ts`
+- `src/utils/` — `code-runner.ts`, `rubric-scorer.ts`, `e2e-runner.ts`, `e2e-scoring.ts`, `token-estimator.ts`, `cost-calculator.ts`
 - `src/report/` — PDF report generator with analysis, charts, and i18n (en/pt-br)
 - `config/` — `models.yaml` (27 API models with pricing) and `agents.yaml` (3 CLI agents)
 - `fixtures/{nodejs,java,dotnet}/jNN/tests/` — pre-written test suites (Jest / JUnit 5 / xUnit); model output is written here and executed
+- `fixtures/fullstack/base-project/` — NestJS + React base project for e2e jobs (j26-j31)
 - `scripts/` — `setup-fixtures.sh`, `docker-bench.sh`, `merge-results.sh`
+- `docker/fullstack/` — Docker setup for fullstack benchmarks (Dockerfile, docker-compose, scripts)
 
 ### Providers and Adapters
 
@@ -123,6 +142,7 @@ The Anthropic backend is selected via the `ANTHROPIC_BACKEND` env var (`api` or 
   - .NET Core: dotnet test + xUnit
 - **rubric**: Claude Haiku judges the response against criteria defined in the job
 - **hybrid**: both approaches combined (e.g., j10)
+- **e2e**: CLI agent modifies files in a NestJS+React project, Playwright tests verify results (j26-j31, CLI mode only)
 
 Test execution is fully implemented for all three languages. Fixture files are language-aware: `fixture.js`, `Fixture.java`, `Fixture.cs`.
 
@@ -159,7 +179,24 @@ Seguranca           -               -                 -              j05
 Teste/QA            -               j04,j19           -              -
 Arquitetura         j06             -                 -              -
 Review/Docs         j15             j07               -              -
+Fullstack (e2e)     -               j26,j27,j28,j29,j30,j31  -      -
 ```
+
+### Fullstack Benchmark (j26-j31)
+
+Jobs j26-j31 test CLI agents on a real NestJS + React project. Unlike j01-j25, agents run in agentic mode (editing files in a project directory) and results are verified with Playwright e2e tests.
+
+- **j26**: Login page (form + auth endpoint + JWT)
+- **j27**: User avatar dropdown menu (auth + header UI)
+- **j28**: Dark mode toggle (CSS variables + localStorage)
+- **j29**: Data table with pagination (server-side + sorting)
+- **j30**: Toast notifications (React context + auto-dismiss)
+- **j31**: Contact form with validation (client + server)
+
+Base project: `fixtures/fullstack/base-project/` (NestJS + Vite React + SQLite/TypeORM)
+Docker: `docker/fullstack/` (separate image with Playwright + Chromium)
+
+Scoring: 3 iterations allowed. Turn 1 pass = 5pts, turn 2 = 3pts, turn 3 = 1pt, fail = 0pts.
 
 ### Environment Variables
 

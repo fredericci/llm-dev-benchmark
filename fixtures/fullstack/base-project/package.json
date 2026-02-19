@@ -1,0 +1,14 @@
+{
+  "name": "fullstack-base-project",
+  "private": true,
+  "description": "NestJS + React base project for fullstack CLI agent benchmarks",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install && cd ../e2e && npm install",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "start": "cd backend && npm run start:prod",
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  }
+}

@@ -1,5 +1,5 @@
 export type Language = 'nodejs' | 'java' | 'dotnet';
-export type EvaluationType = 'test-execution' | 'rubric' | 'hybrid';
+export type EvaluationType = 'test-execution' | 'rubric' | 'hybrid' | 'e2e';
 export type ExecutionMode = 'api' | 'cli';
 
 export interface JobInput {
@@ -72,4 +72,31 @@ export interface Job {
     response: string,
     input: JobInput,
   ): Promise<{ passed: boolean; score: number; notes: string }>;
+}
+
+/**
+ * FullstackJob — a job that requires CLI agents to modify files in a project directory.
+ * Evaluation is done via Playwright e2e tests instead of extracting code from text.
+ */
+export interface FullstackJob extends Job {
+  evaluationType: 'e2e';
+
+  /** Path to the base project template, relative to fixtures/ */
+  baseProjectPath: string;
+
+  /** Filename of the Playwright test spec (in the base project's e2e/ directory) */
+  playwrightTestFile: string;
+
+  /**
+   * Evaluate by running Playwright against the modified project directory.
+   * The response parameter is the agent's stdout (for logging only).
+   */
+  evaluateE2E(
+    projectDir: string,
+    input: JobInput,
+  ): Promise<{ passed: boolean; score: number; notes: string }>;
+}
+
+export function isFullstackJob(job: Job): job is FullstackJob {
+  return job.evaluationType === 'e2e';
 }

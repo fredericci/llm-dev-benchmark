@@ -20,6 +20,11 @@ export interface ExecutionResult {
   displayName: string;
 }
 
+/** Extended result for fullstack jobs — includes the project directory */
+export interface FullstackExecutionResult extends ExecutionResult {
+  projectDir: string;
+}
+
 /** Both APIExecutor and CLIExecutor implement this interface */
 export interface Executor {
   execute(request: ExecutionRequest): Promise<ExecutionResult>;
