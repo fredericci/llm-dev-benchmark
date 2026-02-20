@@ -6,7 +6,7 @@ Supports two interchangeable execution modes producing identical CSV output:
 
 | Mode | How it works | Token counts |
 |------|-------------|--------------|
-| **API Direct** | Calls models via SDKs (`@anthropic-ai/sdk`, `@anthropic-ai/foundry-sdk`, `openai`, `@google/generative-ai`) | Exact (from API response) |
+| **API Direct** | Calls models via SDKs (`@anthropic-ai/sdk`, `@anthropic-ai/vertex-sdk`, `openai`, `@google/generative-ai`) | Exact (from API response) |
 | **CLI Agent** | Invokes local binaries (`claude`, `gemini`, `codex`) via `child_process` | Estimated (character/4) or exact if agent provides metadata |
 
 Both modes use **the exact same prompt** per job. Zero transformation between modes — guaranteeing full comparability.
@@ -40,10 +40,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
 
-# Azure AI Foundry (for anthropic-foundry provider)
-ANTHROPIC_FOUNDRY_API_KEY=...
-ANTHROPIC_FOUNDRY_RESOURCE=...        # resource name from endpoint URL
-# ANTHROPIC_FOUNDRY_BASE_URL=...      # optional: override full base URL
+# Anthropic connection backend: api | vertex
+ANTHROPIC_BACKEND=api
+
+# Required when ANTHROPIC_BACKEND=vertex:
+# ANTHROPIC_VERTEX_PROJECT_ID=my-gcp-project   # auto-resolved from ADC if not set
+CLOUD_ML_REGION=global                          # or a specific region (e.g. us-east5)
 
 JUDGE_MODEL_ID=claude-haiku-4-5-20251001
 MAX_OUTPUT_TOKENS=4096
@@ -60,7 +62,7 @@ The `JUDGE_MODEL_ID` is used for rubric-based evaluation (requires Anthropic API
 
 ### Quick validation (1 job, 1 model, 1 run)
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode api \
   --jobs j01 \
   --models claude-haiku-4-5 \
@@ -70,7 +72,7 @@ npx ts-node -r tsconfig-paths/register src/cli.ts run \
 
 ### Full API benchmark
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode api \
   --models claude-sonnet-4,gpt-4o,gemini-flash-2-0 \
   --jobs all \
@@ -80,7 +82,7 @@ npx ts-node -r tsconfig-paths/register src/cli.ts run \
 
 ### CLI agent mode
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode cli \
   --agents claude-code,gemini-cli \
   --jobs j01,j03,j05 \
@@ -90,7 +92,7 @@ npx ts-node -r tsconfig-paths/register src/cli.ts run \
 
 ### Mixed mode (API + CLI comparison)
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode both \
   --models claude-sonnet-4,gpt-4o \
   --agents claude-code,gemini-cli \
@@ -102,7 +104,7 @@ npx ts-node -r tsconfig-paths/register src/cli.ts run \
 
 ### Multi-turn retry (re-prompt on failure)
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode api \
   --jobs j01 \
   --models claude-haiku-4-5 \
@@ -115,7 +117,7 @@ When `--max-iterations N` is set (N > 1), failed jobs are re-prompted with feedb
 
 ### Dry run (estimate cost without calling APIs)
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts run \
+npm run dev -- run \
   --mode both \
   --jobs all \
   --models claude-sonnet-4 \
@@ -123,45 +125,148 @@ npx ts-node -r tsconfig-paths/register src/cli.ts run \
   --dry-run
 ```
 
+### Run all models from a provider
+```bash
+npm run dev -- run \
+  --mode api \
+  --providers anthropic \
+  --jobs j01 \
+  --languages nodejs \
+  --runs 1
+```
+
+You can combine `--models` and `--providers` (union of both):
+```bash
+npm run dev -- run \
+  --mode api \
+  --models gpt-4o \
+  --providers anthropic \
+  --jobs j01 \
+  --languages nodejs \
+  --runs 1
+```
+
+### Concurrency control
+
+By default, up to 3 jobs run concurrently. Override with `--concurrent`:
+```bash
+npm run dev -- run \
+  --mode api --jobs all --models claude-haiku-4-5 \
+  --languages nodejs --runs 1 --concurrent 5
+```
+
+### Fullstack benchmark (j26-j31)
+
+Fullstack jobs test CLI agents on a real NestJS + React project. Agents run in agentic mode (editing files) and results are verified with Playwright e2e tests.
+
+**Run locally** (requires CLI agents installed):
+```bash
+npm run dev -- run \
+  --mode cli --agents claude-code --jobs j26 \
+  --runs 1 --max-iterations 3
+```
+
+**Run via Docker** (recommended):
+```bash
+# Build the fullstack image (includes Playwright + Chromium)
+npm run docker:build:fullstack
+
+# Run all fullstack benchmarks in parallel
+npm run docker:bench:fullstack
+```
+
+Scoring: 3 iterations allowed. Turn 1 pass = 5 pts, turn 2 = 3 pts, turn 3 = 1 pt, fail = 0 pts.
+
+### Docker (parallel benchmark runs)
+
+Run standard benchmarks (j01-j25) in parallel Docker containers:
+```bash
+# Build the image
+npm run docker:build
+
+# Run benchmarks in parallel containers
+npm run docker:bench
+
+# Merge results from multiple container runs into a single CSV
+npm run docker:merge
+```
+
+Run fullstack benchmarks (j26-j31) with Docker:
+```bash
+# Build fullstack image (Playwright + Chromium)
+npm run docker:build:fullstack
+
+# Run fullstack benchmarks
+npm run docker:bench:fullstack
+```
+
 ### Check available CLI agents
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts check-agents
+npm run dev -- check-agents
 ```
 
 ### List all jobs
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts list-jobs
+npm run dev -- list-jobs
 ```
 
-### Generate PDF report from results
+### Summarize results
 ```bash
-npx ts-node -r tsconfig-paths/register src/cli.ts report \
+npm run dev -- summarize \
+  results/benchmark_2026-02-18_1551.csv
+```
+
+Prints a summary table from an existing CSV file — no API calls needed.
+
+### Generate PDF report
+```bash
+npm run dev -- report \
   --input results/benchmark_2026-02-18_1551.csv \
   --output ./results \
   --lang both
 ```
 
-The `--lang` flag supports `en`, `pt-br`, or `both` (default). Reports include rankings, cost-efficiency analysis, charts, and per-category breakdowns.
+Or via npm script (builds first):
+```bash
+npm run report -- --input results/benchmark_2026-02-18_1551.csv --output ./results
+```
+
+**Flags:**
+- `--input` — path to the benchmark CSV file (required)
+- `--output` — output directory for the PDF (default: `./results`)
+- `--lang` — `en`, `pt-br`, or `both` (default: `both`)
+
+**PDF report features:**
+- Overall ranking table with pass rate, avg score, cost, and latency
+- 8 charts: cost vs quality scatter, pass rate bars, cost-efficiency radar, category heatmap, token usage, latency distribution, retry analysis, and model comparison
+- AI-generated narrative analysis per section (powered by the judge model)
+- Per-category breakdowns with detailed scoring
+- Multi-turn retry analysis (iteration scores, pass-on-turn distribution)
+- Full i18n support (English and Brazilian Portuguese)
 
 ---
 
 ## API Providers
 
-Five providers are supported, each with a dedicated adapter:
+Five adapters are supported:
 
 | Provider | Adapter | SDK | Notes |
 |---|---|---|---|
-| `anthropic` | `anthropic.adapter.ts` | `@anthropic-ai/sdk` | Direct Anthropic API |
-| `anthropic-foundry` | `anthropic-foundry.adapter.ts` | `@anthropic-ai/foundry-sdk` | Claude via Azure AI Foundry |
+| `anthropic` | `anthropic.adapter.ts` | `@anthropic-ai/sdk` | Direct Anthropic API (`ANTHROPIC_BACKEND=api`) |
+| `anthropic` | `anthropic-vertex.adapter.ts` | `@anthropic-ai/vertex-sdk` | Claude via Google Vertex AI (`ANTHROPIC_BACKEND=vertex`) |
 | `openai` | `openai.adapter.ts` | `openai` | Chat Completions API |
 | `openai-responses` | `openai-responses.adapter.ts` | `openai` | Responses API (for Codex models) |
 | `google` | `google.adapter.ts` | `@google/generative-ai` | Google Generative AI |
+
+The Anthropic backend is selected via the `ANTHROPIC_BACKEND` env var (`api` or `vertex`). Both backends share the same `provider: anthropic` in `models.yaml`.
 
 Reasoning models (o3, o4-mini) do not support temperature; the OpenAI adapter handles this automatically. Codex models (gpt-5-codex, gpt-5.2-codex) use the Responses API instead of Chat Completions.
 
 ---
 
-## The 25 Jobs
+## The 31 Jobs
+
+### Isolated tasks (j01-j25)
 
 | ID | Name | Type | Description |
 |----|------|------|-------------|
@@ -191,18 +296,34 @@ Reasoning models (o3, o4-mini) do not support temperature; the OpenAI adapter ha
 | j24 | Optimistic Update | test-execution | Task list with optimistic UI updates and rollback |
 | j25 | Async State Management | test-execution | Handle all async states: loading, success, empty, error, retry |
 
+### Fullstack tasks (j26-j31)
+
+Fullstack jobs test CLI agents on a real NestJS + React project (`fixtures/fullstack/base-project/`). Unlike j01-j25, agents run in agentic mode (editing files in a project directory) and results are verified with Playwright e2e tests. These jobs only run in CLI mode (`--mode cli`).
+
+| ID | Name | Type | Description |
+|----|------|------|-------------|
+| j26 | Login Page | e2e | Login form + auth endpoint + JWT |
+| j27 | Avatar Menu | e2e | User avatar dropdown menu with auth + header UI |
+| j28 | Dark Mode | e2e | Dark mode toggle with CSS variables + localStorage |
+| j29 | Data Table | e2e | Data table with server-side pagination + sorting |
+| j30 | Toast Notifications | e2e | React context-based toast notifications + auto-dismiss |
+| j31 | Contact Form | e2e | Contact form with client + server validation |
+
+**Scoring:** 3 iterations allowed. Turn 1 pass = 5 pts, turn 2 = 3 pts, turn 3 = 1 pt, fail = 0 pts.
+
 ### Coverage Map
 
 ```
-                    ENTENDER        CRIAR             MODIFICAR      DIAGNOSTICAR
-Backend             j12             j01,j11,j13       j02,j08,j16   j03,j09,j18,j20
-Frontend            -               j21,j23,j24,j25   j22            -
-SQL/Dados           -               j17               j10            -
-DevOps/Infra        -               j14               -              j20
-Seguranca           -               -                 -              j05
-Teste/QA            -               j04,j19           -              -
-Arquitetura         j06             -                 -              -
-Review/Docs         j15             j07               -              -
+                    ENTENDER        CRIAR                          MODIFICAR      DIAGNOSTICAR
+Backend             j12             j01,j11,j13                    j02,j08,j16   j03,j09,j18,j20
+Frontend            -               j21,j23,j24,j25                j22            -
+SQL/Dados           -               j17                            j10            -
+DevOps/Infra        -               j14                            -              j20
+Seguranca           -               -                              -              j05
+Teste/QA            -               j04,j19                        -              -
+Arquitetura         j06             -                              -              -
+Review/Docs         j15             j07                            -              -
+Fullstack (e2e)     -               j26,j27,j28,j29,j30,j31       -              -
 ```
 
 ---
@@ -220,7 +341,7 @@ Results are written to `results/benchmark_YYYYMMDD_HHMMSS.csv` — one row per e
 | `job_name` | Human-readable name |
 | `language` | `nodejs` \| `java` \| `dotnet` |
 | `execution_mode` | `api` \| `cli` |
-| `provider` | `anthropic`, `anthropic-foundry`, `openai`, `openai-responses`, `google`, `cli-anthropic`, etc. |
+| `provider` | `anthropic`, `openai`, `openai-responses`, `google`, `cli-anthropic`, etc. |
 | `model_id` | Technical model ID |
 | `model_display_name` | Human-readable model name |
 | `run_number` | 1-based run index |
@@ -251,7 +372,7 @@ Results are written to `results/benchmark_YYYYMMDD_HHMMSS.csv` — one row per e
    import { Job, JobInput, Language } from '../base.job';
 
    export class MyNewJob implements Job {
-     id = 'j26';
+     id = 'jNN';
      name = 'My New Job';
      description = '...';
      supportedLanguages: Language[] = ['nodejs'];
@@ -272,11 +393,11 @@ Results are written to `results/benchmark_YYYYMMDD_HHMMSS.csv` — one row per e
 
 2. Add one line to `src/jobs/registry.ts`:
    ```typescript
-   import j26 from './j26-my-new-job';
+   import jNN from './jNN-my-new-job';
    // ... add to ALL_JOBS array
    ```
 
-3. Optionally add a fixture: `fixtures/nodejs/j26/fixture.js`
+3. Optionally add a fixture: `fixtures/nodejs/jNN/fixture.js`
 
 **No other file needs to change.**
 
@@ -287,7 +408,7 @@ Results are written to `results/benchmark_YYYYMMDD_HHMMSS.csv` — one row per e
 Add one entry to `config/models.yaml`:
 ```yaml
 - id: my-new-model
-  provider: anthropic  # or anthropic-foundry | openai | openai-responses | google
+  provider: anthropic  # or openai | openai-responses | google
   displayName: "My Model"
   modelId: "actual-api-model-id"
   pricing:
@@ -295,9 +416,7 @@ Add one entry to `config/models.yaml`:
     outputPerMToken: 5.00
 ```
 
-For `anthropic-foundry` models, you can optionally set `foundryResource` per model to override the `ANTHROPIC_FOUNDRY_RESOURCE` env var.
-
-Then use `--models my-new-model` in the CLI.
+Then use `--models my-new-model` in the CLI. For Anthropic models, set `ANTHROPIC_BACKEND` to choose between direct API and Vertex AI.
 
 ---
 
@@ -319,15 +438,17 @@ src/
 ├── reporter.ts         Writes CSV rows + prints summary table
 │
 ├── execution/
-│   ├── base.executor.ts     Executor interface
-│   ├── api-executor.ts      Mode A: SDK calls
-│   └── cli-executor.ts      Mode B: child_process spawn
+│   ├── base.executor.ts              Executor interface
+│   ├── api-executor.ts               Mode A: SDK calls
+│   ├── cli-executor.ts               Mode B: child_process spawn
+│   └── fullstack-cli-executor.ts     Fullstack e2e: agent edits + Playwright
 │
-├── adapters/           SDK wrappers (5 providers)
+├── adapters/           SDK wrappers (5 adapters)
 ├── cli-agents/         CLI agent configs (one per binary)
-├── jobs/               25 benchmark jobs + registry
-├── report/             Report types (analysis, charts, PDF export)
-└── utils/              token-estimator, cost-calculator, code-runner, rubric-scorer
+├── jobs/               31 benchmark jobs (j01-j25 isolated, j26-j31 fullstack) + registry
+├── report/             PDF report generator (analysis, charts, i18n)
+└── utils/              token-estimator, cost-calculator, code-runner, rubric-scorer,
+                        e2e-runner, e2e-scoring
 ```
 
 ### Key invariants

@@ -1,6 +1,27 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
 import { ModelAdapter, AdapterCompleteRequest, AdapterCompleteResponse } from './base.adapter';
 
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000;
+
+async function withRetry<T>(fn: () => Promise<T>, modelId: string): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const isRetryable = /fetch failed|503|429|rate|quota|overloaded|unavailable/i.test(msg);
+      if (!isRetryable || attempt === MAX_RETRIES) break;
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+      console.warn(`[google] ${modelId} attempt ${attempt + 1} failed (${msg.slice(0, 80)}), retrying in ${delay}ms...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
 export class GoogleAdapter implements ModelAdapter {
   private client: GoogleGenerativeAI;
   provider = 'google';
@@ -29,7 +50,7 @@ export class GoogleAdapter implements ModelAdapter {
       },
     });
 
-    const result = await model.generateContent(request.userPrompt);
+    const result = await withRetry(() => model.generateContent(request.userPrompt), this.modelId);
     const response = result.response;
     const content = response.text();
 
