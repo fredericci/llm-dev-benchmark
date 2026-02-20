@@ -45,6 +45,12 @@ const dict: Record<string, Record<Locale, string>> = {
     'pt-br': 'Sumário',
   },
 
+  // AI chart narration label
+  'chart.aiAnalysis': {
+    en: 'AI Analysis',
+    'pt-br': 'Análise por IA',
+  },
+
   // Section titles
   'section.overview': {
     en: 'Executive Overview',
