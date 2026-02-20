@@ -95,6 +95,7 @@ export interface HeatmapCell {
   jobId: string;
   avgScore: number;
   passed: boolean;
+  isMiss: boolean;
 }
 
 export interface HeatmapData {
@@ -118,6 +119,7 @@ export interface AnalysisResult {
   totalJobs: number;
   totalRuns: number;
   totalErrors: number;
+  totalMisses: number;
   totalRunsIncludingErrors: number;
   sourceFile: string;
   generatedAt: string;

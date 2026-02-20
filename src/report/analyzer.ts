@@ -133,7 +133,7 @@ function buildJobDifficulty(validRows: BenchmarkRow[]): JobDifficulty[] {
     .sort((a, b) => a.passRate - b.passRate || a.avgScore - b.avgScore);
 }
 
-function buildHeatmapData(validRows: BenchmarkRow[], overallRanking: ModelSummary[]): HeatmapData {
+function buildHeatmapData(validRows: BenchmarkRow[], missRows: BenchmarkRow[], overallRanking: ModelSummary[]): HeatmapData {
   const jobs = [...new Set(validRows.map((r) => r.jobId))].sort();
   const models = overallRanking.slice(0, 15).map((m) => m.displayName);
 
@@ -146,8 +146,10 @@ function buildHeatmapData(validRows: BenchmarkRow[], overallRanking: ModelSummar
         ? matchingRows.reduce((s, r) => s + r.qualityScore, 0) / matchingRows.length
         : -1;
       const passed = matchingRows.length > 0 && matchingRows.some((r) => r.passed);
+      const isMiss = matchingRows.length === 0 &&
+        missRows.some((r) => r.modelDisplayName === modelName && r.jobId === jobId);
 
-      return { modelDisplayName: modelName, jobId, avgScore, passed };
+      return { modelDisplayName: modelName, jobId, avgScore, passed, isMiss };
     });
   });
 
@@ -186,10 +188,11 @@ function buildRetryAnalysis(validRows: BenchmarkRow[], summaries: ModelSummary[]
 }
 
 export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResult {
-  // Filter out error rows (infrastructure failures)
+  // Separate miss rows (not executed), infrastructure errors, and valid rows
   const allRows = rows;
+  const missRows = rows.filter((r) => r.errorMessage === 'Not executed');
   const validRows = rows.filter((r) => !r.errorMessage || r.errorMessage.trim() === '');
-  const errorCount = allRows.length - validRows.length;
+  const errorCount = allRows.length - validRows.length - missRows.length;
 
   // Build summaries from valid rows only
   const summaries = buildSummaries(validRows);
@@ -275,7 +278,7 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
   const jobDifficulty = buildJobDifficulty(validRows);
 
   // Heatmap
-  const heatmapData = buildHeatmapData(validRows, overallRanking);
+  const heatmapData = buildHeatmapData(validRows, missRows, overallRanking);
 
   // Retry analysis
   const retryAnalysis = buildRetryAnalysis(validRows, summaries);
@@ -288,6 +291,7 @@ export function analyze(rows: BenchmarkRow[], sourceFile: string): AnalysisResul
     totalJobs: uniqueJobs.size,
     totalRuns: validRows.length,
     totalErrors: errorCount,
+    totalMisses: missRows.length,
     totalRunsIncludingErrors: allRows.length,
     sourceFile,
     generatedAt: new Date().toISOString(),
