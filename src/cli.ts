@@ -354,6 +354,28 @@ program
     printSummaryFromCSV(csvFile);
   });
 
+// ─── consolidate command ──────────────────────────────────────────────────────
+
+program
+  .command('consolidate')
+  .description('Merge multiple benchmark CSVs and select best result per combo')
+  .requiredOption('--inputs <files>', 'Comma-separated CSV file paths')
+  .option('--output <file>', 'Output consolidated CSV file')
+  .option('--complete-matrix [boolean]', 'Add synthetic rows for untested combos (default: true)', 'true')
+  .action(async (opts) => {
+    const { consolidateCLI } = await import('./consolidate');
+
+    const inputFiles = opts.inputs.split(',').map((f: string) => f.trim());
+    const outputFile = opts.output ||
+      path.join(process.env.RESULTS_DIR ?? './results',
+                `consolidated_${new Date().toISOString().replace(/[:.]/g, '').replace('T', '_').slice(0, 15)}.csv`);
+
+    // Parse boolean from string
+    const completeMatrix = opts.completeMatrix === 'true' || opts.completeMatrix === true;
+
+    consolidateCLI(inputFiles, outputFile, completeMatrix);
+  });
+
 program.parseAsync(process.argv).catch((err) => {
   console.error('Fatal error:', err instanceof Error ? err.message : err);
   process.exit(1);
