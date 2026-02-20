@@ -303,6 +303,58 @@ function writeMergedCSV(results: JobResult[], outputPath: string): void {
   fs.writeFileSync(outputPath, content, 'utf-8');
 }
 
+// ─── Helper: Expand inputs to handle directories ───────────────────────────────
+
+function expandInputs(inputs: string[]): string[] {
+  const expandedFiles: string[] = [];
+
+  for (const input of inputs) {
+    const resolved = path.resolve(input);
+
+    // Check if input is a directory
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      // Read all .csv files from directory
+      const files = fs.readdirSync(resolved)
+        .filter(f => f.endsWith('.csv'))
+        .map(f => path.join(resolved, f));
+
+      if (files.length === 0) {
+        console.warn(`  ⚠ No CSV files found in directory: ${input}`);
+      } else {
+        console.log(`  📁 Found ${files.length} CSV file(s) in directory: ${input}`);
+        expandedFiles.push(...files);
+      }
+    } else if (input.includes('*')) {
+      // Handle glob patterns (simple implementation)
+      const dir = path.dirname(resolved);
+      const pattern = path.basename(resolved);
+
+      if (fs.existsSync(dir)) {
+        const files = fs.readdirSync(dir)
+          .filter(f => {
+            // Simple glob: *.csv or benchmark_*.csv
+            if (pattern === '*.csv') return f.endsWith('.csv');
+            const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+            return regex.test(f);
+          })
+          .map(f => path.join(dir, f));
+
+        if (files.length === 0) {
+          console.warn(`  ⚠ No files matched pattern: ${input}`);
+        } else {
+          console.log(`  🔍 Matched ${files.length} file(s) with pattern: ${input}`);
+          expandedFiles.push(...files);
+        }
+      }
+    } else {
+      // Regular file
+      expandedFiles.push(resolved);
+    }
+  }
+
+  return expandedFiles;
+}
+
 // ─── CLI Entry Point ────────────────────────────────────────────────────────────
 
 export function consolidateCLI(inputs: string[], output: string, completeMatrix: boolean): void {
@@ -310,13 +362,23 @@ export function consolidateCLI(inputs: string[], output: string, completeMatrix:
     console.error('Error: No input files specified');
     console.error('\nUsage:');
     console.error('  npm run dev -- consolidate --inputs file1.csv,file2.csv --output merged.csv');
+    console.error('  npm run dev -- consolidate --inputs results/ --output merged.csv');
+    console.error('  npm run dev -- consolidate --inputs "results/*.csv" --output merged.csv');
     process.exit(1);
   }
 
-  console.log(`\nConsolidating ${inputs.length} CSV file(s)...\n`);
+  // Expand directories and glob patterns
+  const expandedInputs = expandInputs(inputs);
+
+  if (expandedInputs.length === 0) {
+    console.error('\nError: No CSV files found');
+    process.exit(1);
+  }
+
+  console.log(`\nConsolidating ${expandedInputs.length} CSV file(s)...\n`);
 
   // Step 1: Parse all CSVs
-  const allResults = parseMultipleCSVs(inputs);
+  const allResults = parseMultipleCSVs(expandedInputs);
   if (allResults.length === 0) {
     console.error('\nError: No valid results found in input files');
     process.exit(1);
