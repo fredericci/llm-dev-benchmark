@@ -102,7 +102,7 @@ cli.ts → runner.ts → executor (api/cli) → adapter (per provider)
                    ↓
               reporter.ts → CSV row (written immediately, crash-safe)
 
-cli.ts report     → report/ → PDF (charts + analysis, en/pt-br)
+cli.ts report     → report/ → PDF (charts + per-chart AI narrations + analysis, en/pt-br)
 cli.ts summarize  → prints summary table from existing CSV
 ```
 
@@ -112,8 +112,8 @@ cli.ts summarize  → prints summary table from existing CSV
 - `src/execution/` — `APIExecutor`, `CLIExecutor`, and `FullstackCLIExecutor`
 - `src/adapters/` — thin SDK wrappers per provider (Anthropic, Anthropic Vertex, OpenAI, OpenAI Responses, Google)
 - `src/cli-agents/` — CLI agent wrappers (claude-code, gemini-cli, codex-cli)
-- `src/utils/` — `code-runner.ts`, `rubric-scorer.ts`, `e2e-runner.ts`, `e2e-scoring.ts`, `token-estimator.ts`, `cost-calculator.ts`
-- `src/report/` — PDF report generator with analysis, charts, and i18n (en/pt-br)
+- `src/utils/` — `code-runner.ts`, `rubric-scorer.ts`, `e2e-runner.ts`, `e2e-scoring.ts`, `token-estimator.ts`, `cost-calculator.ts`, `report-narrator.ts` (AI intro, conclusion, and per-chart narrations)
+- `src/report/` — PDF report generator with analysis, charts, i18n (en/pt-br), and AI chart narrations
 - `config/` — `models.yaml` (27 API models with pricing) and `agents.yaml` (3 CLI agents)
 - `fixtures/{nodejs,java,dotnet}/jNN/tests/` — pre-written test suites (Jest / JUnit 5 / xUnit); model output is written here and executed
 - `fixtures/fullstack/base-project/` — NestJS + React base project for e2e jobs (j26-j31)
@@ -157,6 +157,30 @@ When `--max-iterations N` is set (N > 1), failed jobs are re-prompted with feedb
 **Add an API model**: add an entry to `config/models.yaml` with pricing; reference via `--models <id>`.
 
 **Add a CLI agent**: implement `CLIAgent` in `src/cli-agents/`, add to `config/agents.yaml`, register in `buildAgentConfigs()` in `src/cli.ts`.
+
+### PDF Report — AI Chart Narrations
+
+Each of the 8 charts in the generated PDF has an AI-generated interpretation rendered directly below it in a styled callout box. Narrations are **cumulative**: the prompt for chart N includes the data context of all preceding charts (1..N), allowing the AI to surface cross-chart correlations (e.g. whether the cost-efficiency winner matches the pass-rate leader, or how token volume explains cost outliers).
+
+**Chart order and cumulative context:**
+
+| # | Chart | Cumulative context passed |
+|---|-------|--------------------------|
+| 1 | Overall Pass Rate (`passRateBar`) | Overview + pass rate ranking |
+| 2 | Cost Efficiency (`costEfficiencyBar`) | + cost efficiency data |
+| 3 | Cost per Resolved Task (`costPerSuccessBar`) | + cost-per-success data |
+| 4 | Quality vs Cost Scatter (`scoreVsCostScatter`) | + quadrant analysis |
+| 5 | Speed vs Quality Scatter (`speedQualityScatter`) | + speed analysis |
+| 6 | Token Usage (`tokenStackedBar`) | + token breakdown |
+| 7 | Category Performance (`categoryGroupedBar`) | + category rankings |
+| 8 | Task Difficulty (`difficultyBar`) | + difficulty data (full context) |
+
+**Key files:**
+- `src/utils/report-narrator.ts` — `buildChart{1-8}Context()` helpers + `generateChartNarrationsEN()` (parallel, 512 tokens each) + `translateChartNarrationsToPtBr()` (parallel); `ChartNarrations` type in `src/report/types.ts`
+- `src/report/pdf-renderer.ts` — `embedChartNarration()` renders a light-blue callout box with left-border accent and "AI Analysis" / "Análise por IA" label pill immediately after each `embedChart()` call
+- `src/report/i18n.ts` — `chart.aiAnalysis` key (en/pt-br)
+
+Override the narrator model via `REPORT_NARRATOR_MODEL_ID` env var (default: `claude-opus-4-6`).
 
 ### Important Invariants
 

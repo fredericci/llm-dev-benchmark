@@ -238,11 +238,12 @@ npm run report -- --input results/benchmark_2026-02-18_1551.csv --output ./resul
 
 **PDF report features:**
 - Overall ranking table with pass rate, avg score, cost, and latency
-- 8 charts: cost vs quality scatter, pass rate bars, cost-efficiency radar, category heatmap, token usage, latency distribution, retry analysis, and model comparison
-- AI-generated narrative analysis per section (powered by the judge model)
+- 8 charts: pass rate ranking, cost efficiency, cost per resolved task, quality vs cost scatter, speed vs quality scatter, token usage, category performance, task difficulty
+- **AI narration below every chart** — each interpretation is cumulative, meaning chart N's narration has full context of charts 1..N and can surface cross-chart correlations
+- AI-generated introduction and conclusion (global benchmark summary)
 - Per-category breakdowns with detailed scoring
 - Multi-turn retry analysis (iteration scores, pass-on-turn distribution)
-- Full i18n support (English and Brazilian Portuguese)
+- Full i18n support (English and Brazilian Portuguese); all AI content auto-translated to pt-br
 
 ---
 
