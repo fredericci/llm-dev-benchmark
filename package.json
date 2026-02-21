@@ -18,6 +18,8 @@
     "docker:build:fullstack": "docker build -f docker/fullstack/Dockerfile -t llm-fullstack-bench .",
     "docker:fullstack": "bash docker/fullstack/scripts/run-single.sh",
     "docker:bench:fullstack": "bash docker/fullstack/scripts/run-benchmark.sh claude-code,gemini-cli,codex-cli j26,j27,j28,j29,j30,j31 3 3",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
@@ -38,9 +40,12 @@
     "pdfkit": "^0.17.2"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@types/pdfkit": "^0.17.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
