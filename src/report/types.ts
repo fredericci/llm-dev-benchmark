@@ -149,3 +149,14 @@ export interface ChartBuffers {
   difficultyBar: Buffer;
   costPerSuccessBar: Buffer;
 }
+
+export interface ChartNarrations {
+  passRateBar: string;
+  costEfficiencyBar: string;
+  costPerSuccessBar: string;
+  scoreVsCostScatter: string;
+  speedQualityScatter: string;
+  tokenStackedBar: string;
+  categoryGroupedBar: string;
+  difficultyBar: string;
+}

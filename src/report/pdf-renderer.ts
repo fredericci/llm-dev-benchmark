@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import {
   AnalysisResult,
   ChartBuffers,
+  ChartNarrations,
   Locale,
 } from './types';
 import { tr } from './i18n';
@@ -29,6 +30,7 @@ interface TocEntry {
 export interface NarrativeContent {
   introduction: string;
   conclusion: string;
+  chartNarrations?: ChartNarrations;
 }
 
 export async function renderPDF(
@@ -157,6 +159,42 @@ export async function renderPDF(
       }
     }
 
+    // Helper: render AI narration block below a chart
+    function embedChartNarration(text: string, currentLocale: Locale): void {
+      if (!text) return;
+      ensureSpace(60);
+      const boxY = doc.y;
+      const labelText = tr('chart.aiAnalysis', currentLocale);
+      const labelWidth = 80;
+      const boxPadX = 10;
+      const boxPadY = 8;
+
+      // Measure text height before drawing the box
+      const textHeight = doc.heightOfString(text, { width: CONTENT_WIDTH - labelWidth - boxPadX * 2, lineGap: 2 });
+      const boxHeight = textHeight + boxPadY * 2;
+
+      // Light blue-grey background box
+      doc.rect(MARGIN, boxY, CONTENT_WIDTH, boxHeight).fill('#EEF4FB');
+
+      // Coloured left border accent
+      doc.rect(MARGIN, boxY, 3, boxHeight).fill('#4A90D9');
+
+      // "AI Analysis" label pill
+      doc.rect(MARGIN + 8, boxY + boxPadY - 2, labelWidth - 4, 14).fill('#4A90D9');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#FFFFFF');
+      doc.text(labelText, MARGIN + 10, boxY + boxPadY, { width: labelWidth - 8, height: 14 });
+
+      // Narration text
+      doc.fontSize(FONT_SIZE_TABLE).font('Helvetica').fillColor('#333333');
+      doc.text(text, MARGIN + labelWidth + boxPadX, boxY + boxPadY, {
+        width: CONTENT_WIDTH - labelWidth - boxPadX * 2,
+        lineGap: 2,
+      });
+
+      doc.y = boxY + boxHeight + 8;
+      doc.font('Helvetica').fillColor('#000000');
+    }
+
     // Helper: interpolate color from red (0) → yellow (2.5) → green (5)
     // Returns hex color string compatible with PDFKit
     function scoreToColor(score: number): string {
@@ -235,6 +273,7 @@ export async function renderPDF(
     doc.addPage();
     sectionHeader(tr('section.overview', locale), tr('section.overview.desc', locale));
     embedChart(charts.passRateBar);
+    embedChartNarration(narrative?.chartNarrations?.passRateBar ?? '', locale);
 
     const overviewHeaders = [
       tr('table.rank', locale),
@@ -266,6 +305,7 @@ export async function renderPDF(
     doc.font('Helvetica').fillColor('#000000');
 
     embedChart(charts.costEfficiencyBar);
+    embedChartNarration(narrative?.chartNarrations?.costEfficiencyBar ?? '', locale);
 
     // Top-3 callout
     const top3 = analysis.costEfficiency.slice(0, 3);
@@ -315,6 +355,7 @@ export async function renderPDF(
     newPage();
     sectionHeader(tr('section.costPerSuccess', locale), tr('section.costPerSuccess.desc', locale));
     embedChart(charts.costPerSuccessBar);
+    embedChartNarration(narrative?.chartNarrations?.costPerSuccessBar ?? '', locale);
 
     const cpsModels = analysis.overallRanking
       .filter((m) => m.passedRuns > 0 && Number.isFinite(m.costPerSuccess))
@@ -354,6 +395,7 @@ export async function renderPDF(
     }
 
     embedChart(charts.scoreVsCostScatter);
+    embedChartNarration(narrative?.chartNarrations?.scoreVsCostScatter ?? '', locale);
 
     // Best quadrant: high quality (>= 3.0) AND below median cost
     const paidModels = analysis.scoreVsCost.filter((e) => !e.isZeroCost);
@@ -437,6 +479,7 @@ export async function renderPDF(
     doc.font('Helvetica').fillColor('#000000');
 
     embedChart(charts.speedQualityScatter);
+    embedChartNarration(narrative?.chartNarrations?.speedQualityScatter ?? '', locale);
 
     const qualifiedModels = analysis.speedAccuracy.filter((e) => e.meetsThreshold);
     if (qualifiedModels.length === 0) {
@@ -491,6 +534,7 @@ export async function renderPDF(
     newPage();
     sectionHeader(tr('section.tokens', locale), tr('section.tokens.desc', locale));
     embedChart(charts.tokenStackedBar);
+    embedChartNarration(narrative?.chartNarrations?.tokenStackedBar ?? '', locale);
 
     const tokHeaders = [
       tr('table.rank', locale),
@@ -512,6 +556,7 @@ export async function renderPDF(
     newPage();
     sectionHeader(tr('section.categories', locale), tr('section.categories.desc', locale));
     embedChart(charts.categoryGroupedBar);
+    embedChartNarration(narrative?.chartNarrations?.categoryGroupedBar ?? '', locale);
 
     for (const cr of analysis.categoryRankings) {
       // Ensure category sub-header + description + table header + 3 rows fit
@@ -551,6 +596,7 @@ export async function renderPDF(
       newPage();
       sectionHeader(tr('section.difficulty', locale), tr('section.difficulty.desc', locale));
       embedChart(charts.difficultyBar);
+      embedChartNarration(narrative?.chartNarrations?.difficultyBar ?? '', locale);
 
       const diffHeaders = [
         tr('table.rank', locale),
