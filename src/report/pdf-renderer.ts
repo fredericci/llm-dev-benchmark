@@ -204,6 +204,9 @@ export async function renderPDF(
     if (analysis.totalErrors > 0) {
       stats.push(`${tr('cover.errorRuns', locale)}: ${analysis.totalErrors}`);
     }
+    if (analysis.totalMisses > 0) {
+      stats.push(`${tr('cover.missRuns', locale)}: ${analysis.totalMisses}`);
+    }
     for (const stat of stats) {
       doc.text(stat, MARGIN, doc.y, { width: CONTENT_WIDTH, align: 'center' });
       doc.moveDown(0.3);
@@ -621,11 +624,14 @@ export async function renderPDF(
         for (let j = 0; j < jobCount; j++) {
           const cell = heatmap.cells[m][j];
           const cx = startX + j * cellWidth;
-          const color = scoreToColor(cell.avgScore);
+          const color = cell.isMiss ? '#7EB8D4' : scoreToColor(cell.avgScore);
 
           doc.rect(cx, rowY, cellWidth, cellHeight).fill(color);
 
-          if (cell.avgScore >= 0) {
+          if (cell.isMiss) {
+            doc.fontSize(5.5).font('Helvetica').fillColor('#FFFFFF');
+            doc.text('N/E', cx + 1, rowY + 4, { width: cellWidth - 2, height: cellHeight, align: 'center' });
+          } else if (cell.avgScore >= 0) {
             // Dark text on light background, light text on dark background
             const textColor = cell.avgScore >= 2 && cell.avgScore <= 4 ? '#333333' : '#FFFFFF';
             doc.fontSize(5.5).font('Helvetica').fillColor(textColor);
@@ -644,7 +650,7 @@ export async function renderPDF(
       doc.y = startY + modelCount * cellHeight + 10;
 
       // Legend
-      ensureSpace(30);
+      ensureSpace(50);
       const legendY = doc.y;
       const legendColors = [
         { score: 0, label: '0' },
@@ -665,7 +671,19 @@ export async function renderPDF(
           doc.text(legendColors[i].label, lx, legendY + 3, { width: legendCellW, align: 'center' });
         }
       }
-      doc.y = legendY + 20;
+
+      // Extra legend entries: no data (grey) and miss (blue)
+      const extraLegendY = legendY + 18;
+      const greyX = legendStartX;
+      const missX = legendStartX + legendCellW + 5;
+      doc.rect(greyX, extraLegendY, legendCellW, 14).fill('#E0E0E0');
+      doc.fontSize(6).font('Helvetica').fillColor('#666666');
+      doc.text(locale === 'pt-br' ? 'Sem dados' : 'No data', greyX, extraLegendY + 3, { width: legendCellW + 5, align: 'center' });
+      doc.rect(missX, extraLegendY, legendCellW, 14).fill('#7EB8D4');
+      doc.fontSize(6).font('Helvetica').fillColor('#FFFFFF');
+      doc.text(locale === 'pt-br' ? 'N/E (miss)' : 'N/E (miss)', missX, extraLegendY + 3, { width: legendCellW + 5, align: 'center' });
+
+      doc.y = extraLegendY + 20;
     }
 
     // ─── 13. Retry Analysis ──────────────────────────────────────────────

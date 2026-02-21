@@ -38,6 +38,10 @@ const dict: Record<string, Record<Locale, string>> = {
     en: 'Error runs (excluded)',
     'pt-br': 'Execuções com erro (excluídas)',
   },
+  'cover.missRuns': {
+    en: 'Not executed (miss)',
+    'pt-br': 'Não executadas (miss)',
+  },
 
   // TOC
   'toc.title': {
@@ -143,8 +147,8 @@ const dict: Record<string, Record<Locale, string>> = {
     'pt-br': 'Heatmap Modelo × Tarefa',
   },
   'section.heatmap.desc': {
-    en: 'Color-coded matrix showing each model\'s average score per task. Red = 0, Yellow = 2.5, Green = 5.0.',
-    'pt-br': 'Matriz colorida mostrando a nota média de cada modelo por tarefa. Vermelho = 0, Amarelo = 2.5, Verde = 5.0.',
+    en: 'Color-coded matrix showing each model\'s average score per task. Red = 0, Yellow = 2.5, Green = 5.0. Grey = no data. Blue = not executed (miss).',
+    'pt-br': 'Matriz colorida mostrando a nota média de cada modelo por tarefa. Vermelho = 0, Amarelo = 2.5, Verde = 5.0. Cinza = sem dados. Azul = não executado (miss).',
   },
   'section.retry': {
     en: 'Retry Analysis',
